@@ -1,518 +1,470 @@
 // ==UserScript==
-// @name         2025暴力破解lurl密碼|自動帶入日期|可下載影片|下載圖片🚀
+// @name         2025|暴力破解lurl&myptt密碼|自動帶入日期|可下載圖影片🚀|v3.0
 // @namespace    http://tampermonkey.net/
-// @version      2.0
-// @description  try to take over the world!
+// @version      3.0
+// @description  針對lurl與myptt的圖片帶入當天日期;開放下載圖片與影片(此部分僅支援lurl)
 // @author       You
 // @match        https://lurl.cc/*
+// @match        https://myppt.cc/*
 // @match        https://www.dcard.tw/f/sex/*
 // @match        https://www.dcard.tw/f/sex
-// @license MIT
+// @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=lurl.cc
 // @grant        none
+// @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
- 
+
 /*
-2025/07/29
-很久沒使用，也很久沒玩腳本了！最近來更新一下，修正一下bug！
-查看了一下是lurl的邏輯改了，但也沒有相去多遠，所以帶入當天日期失效、圖片右鍵下載失效。
-花了十幾分鐘修改一下，鎖右鍵就鎖吧無所謂。
- 
-現在已經修復完畢，可以自動帶入"上傳日期"然後圖片下面會有個下載按鈕，點下去會是圖片位置。(自己右鍵存檔)
- 
- 
-未來考慮更新:
-目前暫時尚未考慮一次多張圖片的狀況。
-可以加入dcard隱藏sex版藍頭文章。
- 
-好用的話點一個好評，現在是社會工廠的一個小螺絲釘，一點點的鼓勵都是很棒的支持 ( ੭ ˙ᗜ˙ )੭ ٩꒰｡
- 
-==============下面是舊的更新日誌==========================
-1.  密碼破解-自動套入當天上傳日期
-2.  影片下載功能-一鍵下載
-3.  預設影片名稱-若是從D卡點擊連結，會以文章標題當作檔案名稱
-4.  暴力破解-嘗試365天的日期去跑，但其實沒意義因此備注掉了XD
-5.  新增下載成功提示
-6.  修改播放器-可加速、投放、下載、子母畫面等
-7.  在西斯版頁面自動點選"是，已經滿18歲"(設定為等待3.5秒執行)
-8.  拿回移動軸(D卡發現你刪掉登入提示，會讓你不能往下滾，超姬芭。)
-9.  修復按鈕消失問題(沒密碼的影片)
-10. 新增可以下載圖片(開啟右鍵另存新檔功能)
+================================================================================
+📋 程式執行流程：
+
+A. 初始化階段
+   A1. 載入外部資源（Toast通知庫）→ 
+   A2. 初始化全域樣式 →
+   A3. 判斷當前網站路由
+
+B. 路由分發
+   B1. Dcard路由 → 註冊連結攔截 → 延遲執行年齡確認 → 移除登入彈窗
+   B2. Myptt路由 → 取得上傳日期 → 自動填入密碼 → 重新載入頁面  
+   B3. Lurl路由  → 嘗試破解密碼 → 判斷內容類型 → 載入對應處理器
+
+C. 功能執行
+   C1. 影片處理 → 建立下載按鈕 → 替換原生播放器 → 綁定下載事件
+   C2. 圖片處理 → 取得預載圖片 → 建立下載按鈕 → 插入頁面DOM
+   C3. 密碼處理 → 解析上傳日期 → 設定Cookie值 → 自動重新載入
+
+================================================================================
+更新紀錄：
+2025/09/19 v3.0 - 重構為functional風格，採用jQuery，改善架構
+2025/09/19 v2.1 - 新增myptt密碼自動帶入
+2025/07/29 v2.0 - 修復lurl邏輯改變問題
+================================================================================
 */
- 
- 
- 
-function PictureSolve(){
-// 第一步：取得 preload image 的連結
-const preloadImageLink = document.querySelector('link[rel="preload"][as="image"]');
- 
-if (preloadImageLink) {
-  const imageUrl = preloadImageLink.href;
- 
-  // 第二步：創建 <a download> 元素，包在 <button> 裡
-  const a = document.createElement('a');
-  a.href = imageUrl;
-  a.download = 'downloaded-image.jpg'; // 你可以自訂檔名
-  a.style.textDecoration = 'none'; // 移除連結樣式
- 
-  const button = document.createElement('button');
-  button.textContent = '下載圖片';
-  button.className = 'btn btn-primary'; // 加上 Bootstrap 樣式（如有使用）
- 
-  a.appendChild(button);
- 
-  // 第三步：外層 col-12 包住按鈕
-  const colDiv = document.createElement('div');
-  colDiv.className = 'col-12';
-  colDiv.appendChild(a);
- 
-  // 第四步：插入到指定的 row 容器中
-  const targetRow = document.querySelector('div.row[style*="margin: 10px"][style*="border-style:solid"]');
-  if (targetRow) {
-    targetRow.appendChild(colDiv);
-  } else {
-    console.warn('找不到指定的 <div class="row"> 元素');
-  }
-} else {
-  console.warn('找不到 preload image 的 <link> 元素');
-}
- 
- 
-}
-//----------------------------------------------------------------
- 
-function SexBoard(){
- 
-// 查找页面上所有的按钮元素
-var buttons = document.querySelectorAll('button');
- 
-// 检查按钮数量
-if (buttons.length == 13) {
-    // 如果条件符合
-    ClickOK();
-}
- 
-function ClickOK(){
-var pElements = document.getElementsByTagName('p');
-var nextSiblingElement = pElements[1].nextSibling;
- 
-// 检查nextSiblingElement是否为元素节点
-if (nextSiblingElement.nodeType === 1) { // 1 表示元素节点
-    // 查找并点击第二个按钮
-    var buttons = nextSiblingElement.querySelectorAll('button');
- 
-    if (buttons.length >= 2) {
-        buttons[1].click();
-    }
- 
- }
-}
- 
-// 查找所有具有class为__portal的div元素
-var portalDivs = document.querySelectorAll('.__portal');
- 
-// 遍历找到的div元素并删除它们
-portalDivs.forEach(function(div) {
-    div.remove(); // 从DOM中移除div元素
-});
-document.body.style.overflow = 'auto';
- 
-}
- 
- 
-function Newplayer(){
-let TureUrl=document.querySelector('source').src
- 
-// 取得現有的 video 元素
-var existingVideo = document.querySelector('video');
- 
-// 創建新的 video 元素
-var newVideo = document.createElement('video');
- 
-// 設定新 video 元素的屬性和特性
-newVideo.src = TureUrl; // 設定新 video 的來源
-newVideo.controls = true; // 新 video 加入控制選項
-newVideo.autoplay = true; // 如有需要，啟用自動播放
-newVideo.width = 640; // 設定新 video 的寬度
-newVideo.height = 360; // 設定新 video 的高度
-newVideo.preload = 'metadata'; // 設定 preload 屬性為 'metadata'
-newVideo.classList.add('vjs-tech'); // 添加 class 屬性
-newVideo.setAttribute('data-setup', '{"aspectRatio":"16:9"}'); // 設定 data-setup 屬性
-newVideo.id = 'vjs_video_3_html5_api'; // 設定 id 屬性
-newVideo.tabIndex = -1; // 設定 tabindex 屬性
-newVideo.setAttribute('role', 'application'); // 設定 role 屬性
- 
-// 用新的 video 元素替換現有的 video 元素
-existingVideo.parentNode.replaceChild(newVideo, existingVideo);
- 
- 
- 
-// 获取具有 id 为 vjs_video_3 的 div 元素
-var videoContainer = document.getElementById('vjs_video_3');
- 
-// 移除 oncontextmenu 和 controlslist 属性
-videoContainer.removeAttribute('oncontextmenu');
-videoContainer.removeAttribute('controlslist');
- 
- 
-// 获取所有具有 class 为 vjs-control-bar 的元素
-var controlBars = document.querySelectorAll('.vjs-control-bar');
- 
-// 遍历所有匹配的元素并删除它们
-controlBars.forEach(function(controlBar) {
-    controlBar.parentNode.removeChild(controlBar);
-});
-}
-//----------------------------------------------------------------
- 
- 
-// 创建 <link> 元素来加载 CSS 文件 (toast的CDN)
-var linkElement = document.createElement('link');
-linkElement.setAttribute('rel', 'stylesheet');
-linkElement.setAttribute('type', 'text/css');
-linkElement.setAttribute('href', 'https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css');
- 
-// 创建 <script> 元素来加载 JavaScript 文件
-var scriptElement = document.createElement('script');
-scriptElement.setAttribute('type', 'text/javascript');
-scriptElement.setAttribute('src', 'https://cdn.jsdelivr.net/npm/toastify-js');
- 
-// 找到页面的 <head> 元素
-var headElement = document.head || document.getElementsByTagName('head')[0];
- 
-// 将 <link> 和 <script> 元素添加到 <head> 中，以加载文件
-headElement.appendChild(linkElement);
-headElement.appendChild(scriptElement);
- 
-//----------------------------------------------------------------
- 
-// 獲取當前頁面的網址
-var currentUrl = window.location.href;
- 
-// 檢查網址是否以 'https://www.dcard.tw/f/sex' 開頭
-if (currentUrl.startsWith('https://www.dcard.tw/f/sex')) {
-    DcardEvent();
- 
-    setTimeout(function() {
-        SexBoard();
-}, 3500);
- 
-if (currentUrl=='https://www.dcard.tw/f/sex') {
- 
-    document.body.style.overflow = 'auto';
- 
-// 存储当前页面的URL
-var currentURL = window.location.href;
- 
-// 添加点击事件监听器
-document.addEventListener('click', function() {
-    // 获取当前页面的新URL
-    var newURL = window.location.href;
- 
-    // 检查新旧URL是否不同，如果不同就重新加载页面
-    if (newURL !== currentURL) {
-        window.location.reload();
-    }
- 
-    var currentURL = window.location.href;
-});
-}
- 
-}else {
-    LurlEvent();
-}
- 
-//----------------------------------------------------------------
-function DcardEvent(){
- 
-// 找到頁面上的所有 <a> 元素
-var links = document.querySelectorAll('a');
- 
-// 遍歷所有 <a> 元素
-for (var i = 0; i < links.length; i++) {
-    var link = links[i];
- 
-    // 註冊點擊事件
-    link.addEventListener('click', function (event) {
-        // 獲取被點擊的 <a> 元素的 href 屬性
-        var href = event.currentTarget.getAttribute('href');
- 
-        // 檢查 href 屬性是否以 'https://lurl.cc/' 開頭
-        if (href && href.startsWith('https://lurl.cc/')) {
-            event.preventDefault(); // 阻止連結的默認操作
- 
-            var WebTitle = document.title;
-            // 在這裡執行你的自定義事件 XYZ
-            console.log('點擊了連結並觸發 XYZ 事件');
-               window.open(href + '?title=' + encodeURIComponent(WebTitle), '_blank');
-        }
-    });
-}
-}
- 
- 
- 
-function LurlEvent(){
- 
-//----------------------------------------------------------------
- 
- 
-    let queryString = window.location.search;
-    let urlParams = new URLSearchParams(queryString);
-    let pageTitle = urlParams.get('title');
- 
- 
-//----------------------------------------------------------------
-function DownloadBtn(){
-    function downloadURI(uri, name) {
-   fetch(uri).then((response) => response.blob())
-   .then((blobresp) => {
-       var blob = new Blob([blobresp], {type: "octet/stream"});
-       var url = window.URL.createObjectURL(blob);
- 
-       var link = document.createElement("a");
-       link.download = name;
-       link.href = url;
-       document.body.appendChild(link);
-       link.click();
-       document.body.removeChild(link);
-       delete link;
-   })
-}
- 
- 
-//----------------------------------------------------------------
- 
- 
-let TureUrl=document.querySelector('source').src
- 
-// 創建一個<a>元素
-var link = document.createElement('a');
-link.setAttribute('class', 'btn btn-primary');
-link.setAttribute('style', 'color: white; float: right;');
-link.setAttribute('href', TureUrl); // 在這裡設定x的值
-link.setAttribute('download', pageTitle + ".mp4"); // 在這裡設定檔案名稱
- 
-// 設定<a>元素的文本內容
-link.innerText = '下載影片';
- 
- 
-let h2=document.querySelectorAll('h2')
-if (h2.length==3){// 获取id为vjs_video_3的div元素
-// 获取id为vjs_video_3的div元素
-var videoDiv = document.getElementById("vjs_video_3");
- 
-// 创建一个新的h2元素
-var h2Element = document.createElement("h2");
- 
-// 设置h2元素的文本内容
-h2Element.textContent = "✅助手啟動";
- 
-// 设置h2元素的样式，将字体颜色设置为白色，并设置文本居中
-h2Element.style.color = "white";
-h2Element.style.textAlign = "center";
-h2Element.style.marginTop = "25px"; // 5像素的上边距
- 
-// 将h2元素插入到div前面
-videoDiv.parentNode.insertBefore(h2Element, videoDiv);
-h2Element.appendChild(link);
-}else{
-// 找到要插入的<h2>元素
-let h2Element = document.querySelector('h2');
- 
-// 插入<a>元素到<h2>元素的內部
-h2Element.appendChild(link);
-}
- 
-link.addEventListener('click',function(e){
-    e.preventDefault();
- 
-    let fileUrl=e.target.href;
-    let fileName=e.target.download;
- 
-// 檢查按鈕元素是否包含 'disabled' class
-if (!link.classList.contains('disabled-button')) {
- 
-    downloadURI(fileUrl, fileName);
- 
-//----------------------------------------------------------------
-    Toastify({
-        text: "🎉成功下載！請稍等幾秒......",
+
+(function ($) {
+  "use strict";
+
+  // ==================== 通用工具函數 ====================
+  const Utils = {
+    // 從日期字串提取月日（MMDD格式）
+    extractMMDD: (dateText) => {
+      const pattern = /(\d{4})-(\d{2})-(\d{2})/;
+      const match = dateText.match(pattern);
+      return match ? match[2] + match[3] : null;
+    },
+
+    // 取得URL查詢參數
+    getQueryParam: (name) => {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    },
+
+    // Cookie操作
+    cookie: {
+      get: (name) => {
+        const match = document.cookie.match(new RegExp(`(^| )${name}=([^;]+)`));
+        return match ? match[2] : null;
+      },
+      set: (name, value) => {
+        document.cookie = `${name}=${value}; path=/`;
+      },
+    },
+
+    // 顯示Toast通知
+    showToast: (message, type = "success") => {
+      if (typeof Toastify === "undefined") return;
+
+      Toastify({
+        text: message,
         duration: 5000,
-        destination: "https://github.com/apvarun/toastify-js",
-        newWindow: true,
-        close: true,
-        gravity: "top", // `top` or `bottom`
-        position: "right", // `left`, `center` or `right`
-        stopOnFocus: true, // Prevents dismissing of toast on hover
+        gravity: "top",
+        position: "right",
         style: {
-            background: "#28a745",
+          background: type === "success" ? "#28a745" : "#dc3545",
         },
-        onClick: function(){} // Callback after click
-    }).showToast();
- 
-//----------------------------------------------------------------
- 
-   // 禁用 <a> 元素
-    link.setAttribute('disabled', 'true');
- 
-    // 添加一個自定義 class（例如，'disabled'）
-    link.classList.add('disabled-button');
- 
-    // 設定 n 秒後移除禁用狀態
-    setTimeout(function () {
-        link.removeAttribute('disabled');
-        link.classList.remove('disabled-button');
-    }, 7000);
-}
- 
-})
- 
- 
-//----------------------------------------------------------------
-    // 創建一個新的 <style> 元素
-var styleElement = document.createElement('style');
- 
-// 定義你的 CSS 樣式
-var cssStyles = `
-.disabled-button {
-    background-color: #ccc; /* 灰色背景 */
-    color: #999; /* 灰色文字顏色 */
-    opacity: 0.5; /* 半透明效果 */
-    cursor: not-allowed; /* 鼠標指針顯示為不允許 */
-}
-`;
- 
-// 將 CSS 樣式添加到 <style> 元素內
-styleElement.innerHTML = cssStyles;
- 
-// 將 <style> 元素附加到 <head> 中，這樣樣式將應用於整個頁面
-document.head.appendChild(styleElement);
- 
-}
- 
- 
-//----------------------------------------------------------------
-window.addEventListener('load', function(){
-     var videoElement = document.querySelector('video');
-    if (videoElement) {
-        // 如果頁面包含<video>元素
-        DownloadBtn();
-        Newplayer();
-    } else {
-        console.log('頁面不包含<video>元素');
-        PictureSolve();
-    }
-});
- 
- 
-//----------------------------------------------------------------
- 
-// 从当前页面的URL中提取特定部分来构建Cookie名称
- 
- 
-let cookieName=getCookieNameFromURL()
- 
-// 获取当前的psc_t2Ic0 Cookie值
-function getPscCookieValue() {
-  var cookies = document.cookie.split('; ');
-  for (var i = 0; i < cookies.length; i++) {
-    var cookie = cookies[i].split('=');
-    if (cookie[0] === cookieName) {
-      return cookie[1];
-    }
-  }
-  return null;
-}
- 
-let stopCondition = "成功";
-let stopWrong = "錯誤";
- 
-function checkStopCondition() {
-  var stopElement = document.querySelector("#back_top > div.container.NEWii_con > section:nth-child(6) > div > div > h2 > span");
-  return stopElement.textContent.includes(stopCondition)||stopElement.textContent.includes(stopWrong);
-}
- 
-function padZero(number) {
-  return (number < 10 ? '0' : '') + number;
-}
- 
-function simulateCookieModification() {
-  var currentCookieValue = getPscCookieValue();
- 
-  if (!checkStopCondition()) {
-    // 确保当前Cookie值存在且是数字
-    if (currentCookieValue !== null && !isNaN(parseInt(currentCookieValue))) {
-      var currentValue = parseInt(currentCookieValue);
- 
-      // 增加日期
-      if (currentValue >= 101 && currentValue <= 1231) {
-        currentValue++; // 增加一天
-        if (currentValue % 100 > 31) {
-          currentValue = (Math.floor(currentValue / 100) + 1) * 100 + 1; // 下一个月的第一天
-        }
- 
-        // 更新Cookie值并添加零
-        var paddedValue = padZero(currentValue);
-        document.cookie = cookieName + "=" + paddedValue;
-        console.log("目前进度: " + paddedValue);
- 
-        // 设置定时器，在1秒后刷新页面
-        setTimeout(function() {
-          location.reload();
-        }, 1000);
+      }).showToast();
+    },
+
+    // 下載檔案（使用Blob）
+    downloadFile: async (url, filename) => {
+      try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        URL.revokeObjectURL(blobUrl);
+      } catch (error) {
+        console.error("下載失敗:", error);
       }
-    }
-  } else {
-    console.log("已停止循环，找到符合条件的内容");
-  }
-}
- 
-function getCookieNameFromURL() {
-  var url = window.location.href;
-  var match = url.match(/https:\/\/lurl.cc\/(\w+)/);
-  if (match && match[1]) {
-    return "psc_" + match[1];
-  }
-  return null;
-}
- 
- 
-function tryToday(){
- 
-// 获取包含日期信息的文本
-var dateText = document.querySelectorAll(".login_span")[1].textContent;
- 
-// 使用正则表达式匹配日期部分（yyyy-mm-dd hh:mm:ss）
-var datePattern = /(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/;
-var match = dateText.match(datePattern);
- 
-if (match) {
-  // 提取月份和日期部分
-  var year = match[1];
-  var month = match[2];
-  var day = match[3];
- 
-  // 将月份和日期部分组合成 "mmdd" 格式
-  var formattedDate = month + day;
- 
-  console.log("提取的日期部分：" + formattedDate);
-} else {
-  console.log("未找到日期信息。");
-}
- 
- document.cookie = cookieName + "=" + formattedDate;
- 
- 
-location.reload()
-}
- 
-if (!checkStopCondition()) {
-    tryToday()
-}
- 
- 
-}
- 
- 
-//----------------------------------------------------------------
+    },
+  };
+
+  // ==================== 資源載入器 ====================
+  const ResourceLoader = {
+    loadToastify: () => {
+      // 載入CSS
+      $("<link>", {
+        rel: "stylesheet",
+        href: "https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css",
+      }).appendTo("head");
+
+      // 載入JS
+      $("<script>", {
+        src: "https://cdn.jsdelivr.net/npm/toastify-js",
+      }).appendTo("head");
+    },
+
+    loadCustomStyles: () => {
+      $("<style>")
+        .text(
+          `
+                .disabled-button {
+                    background-color: #ccc !important;
+                    color: #999 !important;
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+            `
+        )
+        .appendTo("head");
+    },
+
+    init: () => {
+      ResourceLoader.loadToastify();
+      ResourceLoader.loadCustomStyles();
+    },
+  };
+
+  // ==================== Myptt處理器 ====================
+  const MypttHandler = {
+    getUploadDate: () => {
+      const $dateSpan = $(".login_span").eq(1);
+      if ($dateSpan.length === 0) return null;
+
+      return Utils.extractMMDD($dateSpan.text());
+    },
+
+    autoFillPassword: () => {
+      const date = MypttHandler.getUploadDate();
+      if (!date) return;
+
+      $("#pasahaicsword").val(date);
+      $("#main_fjim60unBU").click();
+      location.reload();
+    },
+
+    init: () => {
+      $(document).ready(() => {
+        MypttHandler.autoFillPassword();
+      });
+    },
+  };
+
+  // ==================== Dcard處理器 ====================
+  const DcardHandler = {
+    // 攔截Lurl連結點擊
+    interceptLurlLinks: () => {
+      $(document).on("click", 'a[href^="https://lurl.cc/"]', function (e) {
+        e.preventDefault();
+
+        const href = $(this).attr("href");
+        const title = encodeURIComponent(document.title);
+
+        window.open(`${href}?title=${title}`, "_blank");
+      });
+    },
+
+    // 自動點選年齡確認
+    autoConfirmAge: () => {
+      const $buttons = $("button");
+      if ($buttons.length !== 13) return;
+
+      const $secondP = $("p").eq(1);
+      if (!$secondP.length) return;
+
+      const $nextElement = $secondP.next();
+      if ($nextElement.prop("nodeType") === 1) {
+        $nextElement.find("button").eq(1).click();
+      }
+    },
+
+    // 移除登入提示並恢復捲動
+    removeLoginModal: () => {
+      $(".__portal").remove();
+      $("body").css("overflow", "auto");
+    },
+
+    // 監聽路由變化（單頁應用）
+    watchRouteChange: () => {
+      if (window.location.href !== "https://www.dcard.tw/f/sex") return;
+
+      let currentURL = window.location.href;
+      $(document).on("click", () => {
+        if (window.location.href !== currentURL) {
+          window.location.reload();
+        }
+      });
+    },
+
+    init: () => {
+      DcardHandler.interceptLurlLinks();
+      DcardHandler.watchRouteChange();
+
+      // 延遲執行（等待頁面載入）
+      setTimeout(() => {
+        DcardHandler.autoConfirmAge();
+        DcardHandler.removeLoginModal();
+      }, 3500);
+    },
+  };
+
+  // ==================== Lurl處理器 ====================
+  const LurlHandler = {
+    // 密碼破解模組
+    passwordCracker: {
+      getCookieName: () => {
+        const match = window.location.href.match(/lurl\.cc\/(\w+)/);
+        return match ? `psc_${match[1]}` : null;
+      },
+
+      isPasswordCorrect: () => {
+        const $statusSpan = $(
+          "#back_top .container.NEWii_con section:nth-child(6) h2 span"
+        );
+        const text = $statusSpan.text();
+        return text.includes("成功") || text.includes("錯誤");
+      },
+
+      tryTodayPassword: () => {
+        if (LurlHandler.passwordCracker.isPasswordCorrect()) {
+          return false;
+        }
+
+        const $dateSpan = $(".login_span").eq(1);
+        if (!$dateSpan.length) return false;
+
+        const date = Utils.extractMMDD($dateSpan.text());
+        if (!date) return false;
+
+        const cookieName = LurlHandler.passwordCracker.getCookieName();
+        if (!cookieName) return false;
+
+        Utils.cookie.set(cookieName, date);
+        return true;
+      },
+
+      init: () => {
+        if (LurlHandler.passwordCracker.tryTodayPassword()) {
+          location.reload();
+        }
+      },
+    },
+
+    // 圖片下載模組
+    pictureDownloader: {
+      getImageUrl: () => {
+        const $preloadLink = $('link[rel="preload"][as="image"]');
+        return $preloadLink.attr("href") || null;
+      },
+
+      createDownloadButton: () => {
+        const imageUrl = LurlHandler.pictureDownloader.getImageUrl();
+        if (!imageUrl) return null;
+
+        const $button = $("<button>", {
+          text: "下載圖片",
+          class: "btn btn-primary",
+        });
+
+        const $link = $("<a>", {
+          href: imageUrl,
+          download: "downloaded-image.jpg",
+          css: { textDecoration: "none" },
+        }).append($button);
+
+        return $("<div>", { class: "col-12" }).append($link);
+      },
+
+      inject: () => {
+        const $button = LurlHandler.pictureDownloader.createDownloadButton();
+        if (!$button) return;
+
+        const $targetRow = $(
+          'div.row[style*="margin: 10px"][style*="border-style:solid"]'
+        );
+        if ($targetRow.length) {
+          $targetRow.append($button);
+        }
+      },
+    },
+
+    // 影片下載模組
+    videoDownloader: {
+      getVideoUrl: () => {
+        const $source = $("source").first();
+        return $source.attr("src") || null;
+      },
+
+      replacePlayer: () => {
+        const videoUrl = LurlHandler.videoDownloader.getVideoUrl();
+        if (!videoUrl) return;
+
+        const $newVideo = $("<video>", {
+          src: videoUrl,
+          controls: true,
+          autoplay: true,
+          width: 640,
+          height: 360,
+          preload: "metadata",
+          class: "vjs-tech",
+          id: "vjs_video_3_html5_api",
+          tabIndex: -1,
+          role: "application",
+          "data-setup": '{"aspectRatio":"16:9"}',
+        });
+
+        $("video").replaceWith($newVideo);
+
+        // 清理原始控制項
+        $("#vjs_video_3").removeAttr("oncontextmenu controlslist");
+        $(".vjs-control-bar").remove();
+      },
+
+      createDownloadButton: () => {
+        const videoUrl = LurlHandler.videoDownloader.getVideoUrl();
+        if (!videoUrl) return null;
+
+        const title = Utils.getQueryParam("title") || "video";
+
+        const $button = $("<a>", {
+          href: videoUrl,
+          download: `${title}.mp4`,
+          text: "下載影片",
+          class: "btn btn-primary",
+          css: { color: "white", float: "right" },
+        });
+
+        // 綁定點擊事件
+        $button.on("click", async function (e) {
+          e.preventDefault();
+
+          const $this = $(this);
+          if ($this.hasClass("disabled-button")) return;
+
+          $this.addClass("disabled-button").attr("disabled", true);
+
+          Utils.showToast("🎉成功下載！請稍等幾秒......");
+          await Utils.downloadFile(videoUrl, `${title}.mp4`);
+
+          setTimeout(() => {
+            $this.removeClass("disabled-button").removeAttr("disabled");
+          }, 7000);
+        });
+
+        return $button;
+      },
+
+      inject: () => {
+        const $button = LurlHandler.videoDownloader.createDownloadButton();
+        if (!$button) return;
+
+        const $h2List = $("h2");
+
+        if ($h2List.length === 3) {
+          // 建立新的標題區塊
+          const $header = $("<h2>", {
+            text: "✅助手啟動",
+            css: {
+              color: "white",
+              textAlign: "center",
+              marginTop: "25px",
+            },
+          });
+
+          $("#vjs_video_3").before($header);
+          $header.append($button);
+        } else {
+          // 附加到現有標題
+          $h2List.first().append($button);
+        }
+      },
+    },
+
+    // 內容類型判斷
+    detectContentType: () => {
+      return $("video").length > 0 ? "video" : "picture";
+    },
+
+    init: () => {
+      // 先嘗試密碼破解
+      LurlHandler.passwordCracker.init();
+
+      // 頁面載入完成後處理內容
+      $(window).on("load", () => {
+        const contentType = LurlHandler.detectContentType();
+
+        if (contentType === "video") {
+          LurlHandler.videoDownloader.inject();
+          LurlHandler.videoDownloader.replacePlayer();
+        } else {
+          LurlHandler.pictureDownloader.inject();
+        }
+      });
+    },
+  };
+
+  // ==================== 路由系統 ====================
+  const Router = {
+    routes: {
+      "myppt.cc": MypttHandler,
+      "dcard.tw/f/sex": DcardHandler,
+      "lurl.cc": LurlHandler,
+    },
+
+    getCurrentRoute: () => {
+      const url = window.location.href;
+
+      for (const [pattern, handler] of Object.entries(Router.routes)) {
+        if (url.includes(pattern)) {
+          return handler;
+        }
+      }
+
+      return null;
+    },
+
+    dispatch: () => {
+      const handler = Router.getCurrentRoute();
+
+      if (handler) {
+        console.log(`路由匹配成功: ${handler.constructor?.name || "Handler"}`);
+        handler.init();
+      } else {
+        console.log("未匹配到任何路由");
+      }
+    },
+  };
+
+  // ==================== 主程式入口 ====================
+  const Main = {
+    init: () => {
+      // 載入資源
+      ResourceLoader.init();
+
+      // 分發路由
+      Router.dispatch();
+    },
+  };
+
+  // 啟動應用
+  $(document).ready(() => {
+    Main.init();
+  });
+})(jQuery);
