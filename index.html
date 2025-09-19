@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lurl Downloader 3.0 - 優雅解決影音下載</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Swiper CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css"
+    />
+
+    <!-- AOS CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --primary-bg: #e3f2fd;
+        --primary: #2196f3;
+        --primary-light: #64b5f6;
+        --success: #4caf50;
+        --success-hover: #45a049;
+        --text-dark: #37474f;
+        --text-light: #607d8b;
+        --white: #ffffff;
+        --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --shadow-hover: 0 8px 12px rgba(0, 0, 0, 0.15);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Noto Sans TC", "Inter", sans-serif;
+        color: var(--text-dark);
+        line-height: 1.6;
+        overflow-x: hidden;
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      /* Hero Section */
+      .hero {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        position: relative;
+        background: linear-gradient(
+          135deg,
+          rgba(227, 242, 253, 0.9) 0%,
+          rgba(187, 222, 251, 0.9) 100%
+        );
+      }
+
+      .hero::before {
+        content: "";
+        position: absolute;
+        top: 10%;
+        left: 5%;
+        width: 100px;
+        height: 100px;
+        background: rgba(100, 181, 246, 0.1);
+        border-radius: 50%;
+        animation: float 6s ease-in-out infinite;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        bottom: 10%;
+        right: 5%;
+        width: 150px;
+        height: 150px;
+        background: rgba(33, 150, 243, 0.1);
+        border-radius: 50%;
+        animation: float 8s ease-in-out infinite;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-20px);
+        }
+      }
+
+      .hero-content h1 {
+        font-size: clamp(2.5rem, 5vw, 4rem);
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 1rem;
+        animation: fadeInUp 1s ease;
+      }
+
+      .hero-content p {
+        font-size: clamp(1.2rem, 2vw, 1.5rem);
+        color: var(--text-light);
+        margin-bottom: 2rem;
+        animation: fadeInUp 1s ease 0.2s both;
+      }
+
+      .install-btn {
+        display: inline-block;
+        padding: 16px 48px;
+        background: linear-gradient(135deg, var(--success) 0%, #66bb6a 100%);
+        color: white;
+        text-decoration: none;
+        border-radius: 50px;
+        font-size: 1.2rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: var(--shadow);
+        animation: fadeInUp 1s ease 0.4s both, pulse 2s infinite;
+      }
+
+      .install-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-hover);
+        background: linear-gradient(
+          135deg,
+          var(--success-hover) 0%,
+          #5cb85c 100%
+        );
+      }
+
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+        }
+        70% {
+          box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+        }
+      }
+
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Features Section */
+      .features {
+        padding: 100px 0;
+        background: white;
+      }
+
+      .section-title {
+        text-align: center;
+        font-size: 2.5rem;
+        color: var(--primary);
+        margin-bottom: 4rem;
+      }
+
+      .feature {
+        display: flex;
+        align-items: center;
+        margin-bottom: 80px;
+        gap: 60px;
+      }
+
+      .feature:nth-child(even) {
+        flex-direction: row-reverse;
+      }
+
+      .feature-image {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .feature-icon {
+        width: 200px;
+        height: 200px;
+        background: linear-gradient(135deg, var(--primary-bg) 0%, #c5e1f9 100%);
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 4rem;
+        transition: transform 0.3s ease;
+      }
+
+      .feature-icon:hover {
+        transform: rotate(5deg) scale(1.05);
+      }
+
+      .feature-content {
+        flex: 1;
+      }
+
+      .feature-content h3 {
+        font-size: 1.8rem;
+        color: var(--primary);
+        margin-bottom: 1rem;
+      }
+
+      .feature-content p {
+        font-size: 1.1rem;
+        color: var(--text-light);
+        line-height: 1.8;
+      }
+
+      /* Timeline Section */
+      .timeline {
+        padding: 100px 0;
+        background: linear-gradient(135deg, #f5f5f5 0%, #e8eaf6 100%);
+        overflow: visible;
+      }
+
+      .timeline-container {
+        position: relative;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 60px 20px 100px;
+      }
+
+      /* 主時間線 - 水平線條 */
+      .timeline-main-line {
+        position: absolute;
+        top: 60px;
+        left: 100px;
+        right: 100px;
+        height: 3px;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          var(--primary-light) 10%,
+          var(--primary) 50%,
+          var(--primary-light) 90%,
+          transparent 100%
+        );
+        z-index: 1;
+      }
+
+      /* 時間線節點容器 */
+      .timeline-wrapper {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        position: relative;
+        z-index: 2;
+        margin-top: 30px;
+      }
+
+      /* 單個時間節點 */
+      .timeline-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        cursor: pointer;
+      }
+
+      /* 時間節點圓圈 */
+      .timeline-node {
+        width: 60px;
+        height: 60px;
+        background: white;
+        border: 4px solid var(--primary);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: var(--primary);
+        font-size: 1.2rem;
+        position: relative;
+        z-index: 3;
+        transition: all 0.3s ease;
+      }
+
+      .timeline-item:hover .timeline-node {
+        background: var(--primary);
+        color: white;
+        transform: scale(1.2);
+        box-shadow: 0 0 25px rgba(33, 150, 243, 0.4);
+      }
+
+      /* 節點連接線 */
+      .timeline-connector {
+        position: absolute;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 2px;
+        height: 40px;
+        background: var(--primary-light);
+        opacity: 0.5;
+      }
+
+      /* 內容卡片 */
+      .timeline-content {
+        margin-top: 50px;
+        background: white;
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: var(--shadow);
+        width: 260px;
+        text-align: center;
+        opacity: 0.9;
+        transform: translateY(0);
+        transition: all 0.3s ease;
+      }
+
+      .timeline-item:hover .timeline-content {
+        opacity: 1;
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-hover);
+      }
+
+      .timeline-version {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 0.5rem;
+      }
+
+      .timeline-date {
+        color: var(--text-light);
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+      }
+
+      .timeline-desc {
+        color: var(--text-dark);
+        line-height: 1.6;
+        font-size: 0.95rem;
+      }
+
+      /* 動畫效果 */
+      .timeline-item {
+        animation: fadeInUp 0.6s ease both;
+      }
+
+      .timeline-item:nth-child(1) {
+        animation-delay: 0.1s;
+      }
+      .timeline-item:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .timeline-item:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      .timeline-item:nth-child(4) {
+        animation-delay: 0.4s;
+      }
+
+      /* Installation Section */
+      .installation {
+        padding: 100px 0;
+        background: white;
+      }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 40px;
+        margin-top: 60px;
+      }
+
+      .step {
+        text-align: center;
+        padding: 30px;
+        background: var(--primary-bg);
+        border-radius: 15px;
+        transition: transform 0.3s ease;
+      }
+
+      .step:hover {
+        transform: translateY(-5px);
+      }
+
+      .step-number {
+        width: 60px;
+        height: 60px;
+        background: var(--primary);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 auto 20px;
+      }
+
+      .step h4 {
+        color: var(--primary);
+        margin-bottom: 10px;
+      }
+
+      .step p {
+        color: var(--text-light);
+      }
+
+      /* Footer */
+      footer {
+        padding: 40px 0;
+        background: var(--text-dark);
+        color: white;
+        text-align: center;
+      }
+
+      footer a {
+        color: var(--primary-light);
+        text-decoration: none;
+        margin: 0 10px;
+      }
+
+      footer a:hover {
+        text-decoration: underline;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .feature {
+          flex-direction: column !important;
+          gap: 30px;
+        }
+
+        .feature-icon {
+          width: 150px;
+          height: 150px;
+          font-size: 3rem;
+        }
+
+        .steps {
+          grid-template-columns: 1fr;
+        }
+
+        .timeline-container {
+          padding: 40px 10px;
+        }
+
+        .timeline-main-line {
+          display: none;
+        }
+
+        .timeline-wrapper {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .timeline-item {
+          margin-bottom: 40px;
+        }
+
+        .timeline-node {
+          width: 50px;
+          height: 50px;
+        }
+
+        .timeline-connector {
+          display: none;
+        }
+
+        .timeline-content {
+          width: 90vw;
+          max-width: 350px;
+          margin-top: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="hero-content">
+        <h1 data-aos="fade-up">Lurl Downloader 3.0</h1>
+        <p data-aos="fade-up" data-aos-delay="200">
+          優雅解決影音下載，智慧破解密碼限制
+        </p>
+        <a
+          href="https://github.com/Jeffrey0117/TM-lurlDownloader/raw/main/lurlDownloader.user.js"
+          class="install-btn"
+          data-aos="fade-up"
+          data-aos-delay="400"
+        >
+          立即安裝腳本 →
+        </a>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+      <div class="container">
+        <h2 class="section-title" data-aos="fade-up">核心功能</h2>
+
+        <div class="feature" data-aos="fade-right">
+          <div class="feature-image">
+            <div class="feature-icon">🔐</div>
+          </div>
+          <div class="feature-content">
+            <h3>智慧密碼破解</h3>
+            <p>
+              自動解析上傳日期作為密碼，無需手動輸入。支援 Lurl 與 Myptt
+              雙平台，一鍵突破密碼限制，讓您輕鬆存取內容。
+            </p>
+          </div>
+        </div>
+
+        <div class="feature" data-aos="fade-left">
+          <div class="feature-image">
+            <div class="feature-icon">📥</div>
+          </div>
+          <div class="feature-content">
+            <h3>影音一鍵下載</h3>
+            <p>
+              支援影片與圖片下載，突破右鍵限制。自動以 Dcard
+              文章標題命名檔案，管理更方便。提供下載進度提示，體驗更流暢。
+            </p>
+          </div>
+        </div>
+
+        <div class="feature" data-aos="fade-right">
+          <div class="feature-image">
+            <div class="feature-icon">🔗</div>
+          </div>
+          <div class="feature-content">
+            <h3>Dcard 完美整合</h3>
+            <p>
+              自動攔截西斯版連結，智慧處理年齡確認。移除惱人的登入提示，恢復頁面滾動功能。讓瀏覽體驗更加順暢無阻。
+            </p>
+          </div>
+        </div>
+
+        <div class="feature" data-aos="fade-left">
+          <div class="feature-image">
+            <div class="feature-icon">⚡</div>
+          </div>
+          <div class="feature-content">
+            <h3>體驗優化升級</h3>
+            <p>
+              增強型播放器支援倍速、投放等功能。Toast 通知即時回饋操作狀態。全新
+              3.0 架構採用模組化設計，效能更佳。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Timeline Section -->
+    <section class="timeline" id="timeline">
+      <div class="container">
+        <h2 class="section-title" data-aos="fade-up">版本歷程</h2>
+        <div class="timeline-container">
+          <!-- 主時間線 -->
+          <div
+            class="timeline-main-line"
+            data-aos="fade"
+            data-aos-delay="100"
+          ></div>
+
+          <div class="timeline-wrapper">
+            <div class="timeline-item" data-aos="fade-up" data-aos-delay="200">
+              <div class="timeline-node">1.0</div>
+              <div class="timeline-connector"></div>
+              <div class="timeline-content">
+                <div class="timeline-version">v1.0</div>
+                <div class="timeline-date">2025/07/29</div>
+                <div class="timeline-desc">
+                  初版發布，實現基本的密碼破解與下載功能
+                </div>
+              </div>
+            </div>
+
+            <div class="timeline-item" data-aos="fade-up" data-aos-delay="300">
+              <div class="timeline-node">2.0</div>
+              <div class="timeline-connector"></div>
+              <div class="timeline-content">
+                <div class="timeline-version">v2.0</div>
+                <div class="timeline-date">2025/07/30</div>
+                <div class="timeline-desc">
+                  修復 Lurl 邏輯變更問題，恢復圖片下載功能
+                </div>
+              </div>
+            </div>
+
+            <div class="timeline-item" data-aos="fade-up" data-aos-delay="400">
+              <div class="timeline-node">2.1</div>
+              <div class="timeline-connector"></div>
+              <div class="timeline-content">
+                <div class="timeline-version">v2.1</div>
+                <div class="timeline-date">2025/09/19</div>
+                <div class="timeline-desc">
+                  新增 Myptt 網站支援，擴展適用範圍
+                </div>
+              </div>
+            </div>
+
+            <div class="timeline-item" data-aos="fade-up" data-aos-delay="500">
+              <div class="timeline-node">3.0</div>
+              <div class="timeline-connector"></div>
+              <div class="timeline-content">
+                <div class="timeline-version">v3.0</div>
+                <div class="timeline-date">2025/09/19</div>
+                <div class="timeline-desc">
+                  全新架構重構，採用 Functional 風格與模組化設計
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Installation Section -->
+    <section class="installation" id="installation">
+      <div class="container">
+        <h2 class="section-title" data-aos="fade-up">安裝步驟</h2>
+        <div class="steps">
+          <div class="step" data-aos="fade-up" data-aos-delay="100">
+            <div class="step-number">1</div>
+            <h4>安裝 Tampermonkey</h4>
+            <p>前往 Chrome 商店安裝油猴套件</p>
+          </div>
+          <div class="step" data-aos="fade-up" data-aos-delay="200">
+            <div class="step-number">2</div>
+            <h4>點擊安裝腳本</h4>
+            <p>點擊上方綠色按鈕安裝腳本</p>
+          </div>
+          <div class="step" data-aos="fade-up" data-aos-delay="300">
+            <div class="step-number">3</div>
+            <h4>享受便利功能</h4>
+            <p>開始使用智慧下載功能</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div class="container">
+        <p>
+          © 2025 Lurl Downloader |
+          <a
+            href="https://github.com/Jeffrey0117/TM-lurlDownloader"
+            target="_blank"
+            >GitHub</a
+          >
+          |
+          <a href="https://github.com/Jeffrey0117" target="_blank"
+            >@Jeffrey0117</a
+          >
+        </p>
+      </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
+    <script>
+      // 初始化 AOS
+      AOS.init({
+        duration: 1000,
+        once: true,
+        offset: 100,
+      });
+
+      // 時間線互動效果（不再需要 Swiper）
+      document.querySelectorAll(".timeline-item").forEach((item) => {
+        item.addEventListener("mouseenter", function () {
+          this.querySelector(".timeline-node").style.animation =
+            "pulse 1s infinite";
+        });
+
+        item.addEventListener("mouseleave", function () {
+          this.querySelector(".timeline-node").style.animation = "none";
+        });
+      });
+
+      // 平滑滾動
+      document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+        anchor.addEventListener("click", function (e) {
+          e.preventDefault();
+          const target = document.querySelector(this.getAttribute("href"));
+          if (target) {
+            target.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          }
+        });
+      });
+
+      // 安裝按鈕點擊追蹤
+      document
+        .querySelector(".install-btn")
+        .addEventListener("click", function () {
+          console.log("Install button clicked");
+        });
+    </script>
+  </body>
+</html>
