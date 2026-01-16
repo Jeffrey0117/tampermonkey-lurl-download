@@ -284,8 +284,8 @@ function browsePage() {
     .card { background: #1a1a1a; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s; }
     .card:hover { transform: scale(1.02); }
     .card-thumb { aspect-ratio: 16/9; background: #333; display: flex; align-items: center; justify-content: center; font-size: 48px; overflow: hidden; }
-    .card-thumb video, .card-thumb img { width: 100%; height: 100%; object-fit: cover; filter: blur(8px); transition: filter 0.3s; }
-    .card:hover .card-thumb video, .card:hover .card-thumb img { filter: blur(4px); }
+    .card-thumb video, .card-thumb img { width: 100%; height: 100%; object-fit: cover; filter: blur(12px); transition: filter 0.3s; }
+    .card:hover .card-thumb video, .card:hover .card-thumb img { filter: blur(6px); }
     .card-info { padding: 12px; }
     .card-title { font-size: 0.95em; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .card-meta { font-size: 0.8em; color: #aaa; margin-top: 8px; }
@@ -478,7 +478,9 @@ module.exports = {
         }
 
         ensureDirs();
-        const ext = type === 'video' ? '.mp4' : '.jpg';
+        // 從 fileUrl 取得原始副檔名
+        const urlExt = path.extname(new URL(fileUrl).pathname).toLowerCase() || (type === 'video' ? '.mp4' : '.jpg');
+        const ext = ['.mp4', '.mov', '.webm', '.avi'].includes(urlExt) ? urlExt : (type === 'video' ? '.mp4' : '.jpg');
         const safeTitle = sanitizeFilename(title);
         const filename = `${safeTitle}${ext}`;
         const targetDir = type === 'video' ? VIDEOS_DIR : IMAGES_DIR;
@@ -631,7 +633,9 @@ module.exports = {
       const ext = path.extname(fullFilePath).toLowerCase();
       const mimeTypes = {
         '.mp4': 'video/mp4',
+        '.mov': 'video/quicktime',
         '.webm': 'video/webm',
+        '.avi': 'video/x-msvideo',
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
