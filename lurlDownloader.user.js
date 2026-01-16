@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.3
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.4
 // @namespace    http://tampermonkey.net/
-// @version      3.3
+// @version      3.4
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -20,6 +20,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/17 v3.4 - Dcard 攔截 myppt 連結、新增回到D卡按鈕
   2026/01/17 v3.3 - myppt 支援下載與 API 回報
   2026/01/17 v3.2 - Dcard 多連結編號、修復重複下載按鈕
   2026/01/17 v3.1 - 修復影片 URL 取得邏輯，整合 API 回報
@@ -129,6 +130,38 @@
     init: () => {
       ResourceLoader.loadToastify();
       ResourceLoader.loadCustomStyles();
+    },
+  };
+
+  const BackToDcardButton = {
+    create: () => {
+      const ref = Utils.getQueryParam("ref");
+      if (!ref) return null;
+      const $button = $("<a>", {
+        href: ref,
+        text: "← 回到D卡文章",
+        class: "btn btn-secondary",
+        target: "_blank",
+        css: {
+          color: "white",
+          backgroundColor: "#006aa6",
+          marginLeft: "10px",
+          textDecoration: "none",
+          padding: "6px 12px",
+          borderRadius: "4px",
+        },
+      });
+      return $button;
+    },
+
+    inject: ($container) => {
+      if ($("#back-to-dcard-btn").length) return;
+      const $button = BackToDcardButton.create();
+      if (!$button) return;
+      $button.attr("id", "back-to-dcard-btn");
+      if ($container && $container.length) {
+        $container.append($button);
+      }
     },
   };
 
@@ -261,23 +294,26 @@
           MypptHandler.pictureDownloader.inject();
           MypptHandler.captureToAPI("image");
         }
+        BackToDcardButton.inject($("h2").first());
       });
     },
   };
 
   const DcardHandler = {
-    interceptLurlLinks: () => {
-      $(document).on("click", 'a[href^="https://lurl.cc/"]', function (e) {
+    interceptLinks: () => {
+      const selector = 'a[href^="https://lurl.cc/"], a[href^="https://myppt.cc/"]';
+      $(document).on("click", selector, function (e) {
         e.preventDefault();
         const href = $(this).attr("href");
-        const $allLurlLinks = $('a[href^="https://lurl.cc/"]');
-        const index = $allLurlLinks.index(this) + 1;
-        const totalLinks = $allLurlLinks.length;
+        const $allLinks = $(selector);
+        const index = $allLinks.index(this) + 1;
+        const totalLinks = $allLinks.length;
         const baseTitle = document.title;
         const title = totalLinks > 1
           ? encodeURIComponent(`${baseTitle}_${index}`)
           : encodeURIComponent(baseTitle);
-        window.open(`${href}?title=${title}`, "_blank");
+        const ref = encodeURIComponent(window.location.href);
+        window.open(`${href}?title=${title}&ref=${ref}`, "_blank");
       });
     },
 
@@ -308,7 +344,7 @@
     },
 
     init: () => {
-      DcardHandler.interceptLurlLinks();
+      DcardHandler.interceptLinks();
       DcardHandler.watchRouteChange();
       setTimeout(() => {
         DcardHandler.autoConfirmAge();
@@ -489,6 +525,7 @@
           LurlHandler.pictureDownloader.inject();
           LurlHandler.captureToAPI("image");
         }
+        BackToDcardButton.inject($("h2").first());
       });
     },
   };
