@@ -145,13 +145,16 @@ function adminPage() {
     .records { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
     .record { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; gap: 15px; }
     .record:hover { background: #f9f9f9; }
-    .record-type { width: 60px; height: 60px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
-    .record-type.video { background: #e3f2fd; }
-    .record-type.image { background: #f3e5f5; }
+    .record-thumb { width: 80px; height: 60px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 24px; background: #f0f0f0; flex-shrink: 0; }
+    .record-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .record-thumb.video { background: #e3f2fd; }
     .record-info { flex: 1; min-width: 0; }
     .record-title { font-weight: 500; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .record-meta { font-size: 0.85em; color: #999; margin-top: 4px; }
-    .record-actions a { color: #2196F3; text-decoration: none; margin-left: 10px; }
+    .record-actions { display: flex; gap: 10px; align-items: center; }
+    .record-actions a { color: #2196F3; text-decoration: none; }
+    .record-actions .delete-btn { color: #e53935; cursor: pointer; border: none; background: none; font-size: 0.9em; }
+    .record-actions .delete-btn:hover { text-decoration: underline; }
     .empty { padding: 40px; text-align: center; color: #999; }
     .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
     .tab { padding: 10px 20px; background: white; border: none; border-radius: 8px; cursor: pointer; }
@@ -205,8 +208,12 @@ function adminPage() {
       }
       const getTitle = (t) => (!t || t === 'untitle' || t === 'undefined') ? '未命名' : t;
       document.getElementById('records').innerHTML = filtered.map(r => \`
-        <div class="record">
-          <div class="record-type \${r.type}">\${r.type === 'video' ? '🎬' : '🖼️'}</div>
+        <div class="record" data-id="\${r.id}">
+          <div class="record-thumb \${r.type}">
+            \${r.type === 'image'
+              ? \`<img src="/lurl/files/\${r.backupPath}" onerror="this.outerHTML='🖼️'">\`
+              : '🎬'}
+          </div>
           <div class="record-info">
             <div class="record-title">\${getTitle(r.title)}</div>
             <div class="record-meta">\${new Date(r.capturedAt).toLocaleString()}</div>
@@ -214,6 +221,7 @@ function adminPage() {
           <div class="record-actions">
             <a href="/lurl/files/\${r.backupPath}" target="_blank">查看</a>
             <a href="\${r.pageUrl}" target="_blank">原始</a>
+            <button class="delete-btn" onclick="deleteRecord('\${r.id}')">刪除</button>
           </div>
         </div>
       \`).join('');
@@ -227,6 +235,18 @@ function adminPage() {
         renderRecords();
       });
     });
+
+    async function deleteRecord(id) {
+      if (!confirm('確定要刪除這筆記錄？')) return;
+      const res = await fetch('/lurl/api/records/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        loadStats();
+        loadRecords();
+      } else {
+        alert('刪除失敗: ' + (data.error || '未知錯誤'));
+      }
+    }
 
     loadStats();
     loadRecords();
@@ -456,6 +476,34 @@ module.exports = {
 
       res.writeHead(200, corsHeaders());
       res.end(JSON.stringify({ total: records.length, videos, images, topUrls }));
+      return;
+    }
+
+    // DELETE /api/records/:id
+    if (req.method === 'DELETE' && urlPath.startsWith('/api/records/')) {
+      const id = urlPath.replace('/api/records/', '');
+      const records = readAllRecords();
+      const record = records.find(r => r.id === id);
+
+      if (!record) {
+        res.writeHead(404, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '記錄不存在' }));
+        return;
+      }
+
+      // 刪除檔案
+      const filePath = path.join(DATA_DIR, record.backupPath);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      // 更新記錄（過濾掉要刪除的）
+      const newRecords = records.filter(r => r.id !== id);
+      fs.writeFileSync(RECORDS_FILE, newRecords.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+
+      console.log(`[lurl] 已刪除: ${record.title}`);
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
