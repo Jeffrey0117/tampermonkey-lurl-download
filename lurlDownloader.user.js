@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.5
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.6
 // @namespace    http://tampermonkey.net/
-// @version      3.5
+// @version      3.6
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -20,6 +20,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/17 v3.6 - 支援多張圖片下載與 API 回報
   2026/01/17 v3.5 - 修復 myppt reload 導致 title 遺失問題
   2026/01/17 v3.4 - Dcard 攔截 myppt 連結、新增回到D卡按鈕
   2026/01/17 v3.3 - myppt 支援下載與 API 回報
@@ -198,21 +199,41 @@
     },
 
     pictureDownloader: {
-      getImageUrl: () => {
-        const $preloadLink = $('link[rel="preload"][as="image"]');
-        return $preloadLink.attr("href") || null;
+      getImageUrls: () => {
+        const urls = [];
+        $('link[rel="preload"][as="image"]').each(function () {
+          const href = $(this).attr("href");
+          if (href && MypptHandler.pictureDownloader.isContentImage(href)) {
+            urls.push(href);
+          }
+        });
+        return urls;
+      },
+
+      isContentImage: (url) => {
+        if (!url) return false;
+        const dominated = ["myppt", "lurl", "imgur", "i.imgur"];
+        const blocked = ["google", "facebook", "analytics", "ads", "tracking", "pixel"];
+        const lowerUrl = url.toLowerCase();
+        if (blocked.some((b) => lowerUrl.includes(b))) return false;
+        if (dominated.some((d) => lowerUrl.includes(d))) return true;
+        if (/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) return true;
+        return false;
       },
 
       createDownloadButton: () => {
-        const imageUrl = MypptHandler.pictureDownloader.getImageUrl();
-        if (!imageUrl) return null;
-        const $button = $("<button>", { text: "下載圖片", class: "btn btn-primary" });
-        const $link = $("<a>", {
-          href: imageUrl,
-          download: "downloaded-image.jpg",
-          css: { textDecoration: "none" },
-        }).append($button);
-        return $("<div>", { class: "col-12" }).append($link);
+        const imageUrls = MypptHandler.pictureDownloader.getImageUrls();
+        if (imageUrls.length === 0) return null;
+        const count = imageUrls.length;
+        const text = count > 1 ? `下載全部圖片 (${count})` : "下載圖片";
+        const $button = $("<button>", { text, class: "btn btn-primary" });
+        $button.on("click", async function () {
+          for (let i = 0; i < imageUrls.length; i++) {
+            const suffix = count > 1 ? `_${i + 1}` : "";
+            await Utils.downloadFile(imageUrls[i], `image${suffix}.jpg`);
+          }
+        });
+        return $("<div>", { class: "col-12" }).append($button);
       },
 
       inject: () => {
@@ -281,21 +302,37 @@
     captureToAPI: (type) => {
       const title = MypptHandler.getTitle();
       const pageUrl = window.location.href.split("?")[0];
-      const fileUrl =
-        type === "video"
-          ? MypptHandler.videoDownloader.getVideoUrl()
-          : MypptHandler.pictureDownloader.getImageUrl();
-      if (!fileUrl) {
-        console.log("無法取得檔案 URL，跳過 API 回報");
-        return;
+
+      if (type === "video") {
+        const fileUrl = MypptHandler.videoDownloader.getVideoUrl();
+        if (!fileUrl) {
+          console.log("無法取得影片 URL，跳過 API 回報");
+          return;
+        }
+        Utils.sendToAPI({
+          title: decodeURIComponent(title),
+          pageUrl,
+          fileUrl,
+          type: "video",
+          source: "myppt",
+        });
+      } else {
+        const imageUrls = MypptHandler.pictureDownloader.getImageUrls();
+        if (imageUrls.length === 0) {
+          console.log("無法取得圖片 URL，跳過 API 回報");
+          return;
+        }
+        imageUrls.forEach((fileUrl, index) => {
+          const suffix = imageUrls.length > 1 ? `_${index + 1}` : "";
+          Utils.sendToAPI({
+            title: decodeURIComponent(title) + suffix,
+            pageUrl,
+            fileUrl,
+            type: "image",
+            source: "myppt",
+          });
+        });
       }
-      Utils.sendToAPI({
-        title: decodeURIComponent(title),
-        pageUrl,
-        fileUrl,
-        type,
-        source: "myppt",
-      });
     },
 
     init: () => {
@@ -405,26 +442,48 @@
     },
 
     pictureDownloader: {
-      getImageUrl: () => {
-        const $preloadLink = $('link[rel="preload"][as="image"]');
-        return $preloadLink.attr("href") || null;
+      getImageUrls: () => {
+        const urls = [];
+        $('link[rel="preload"][as="image"]').each(function () {
+          const href = $(this).attr("href");
+          if (href && LurlHandler.pictureDownloader.isContentImage(href)) {
+            urls.push(href);
+          }
+        });
+        return urls;
+      },
+
+      isContentImage: (url) => {
+        if (!url) return false;
+        const dominated = ["lurl", "myppt", "imgur", "i.imgur"];
+        const blocked = ["google", "facebook", "analytics", "ads", "tracking", "pixel"];
+        const lowerUrl = url.toLowerCase();
+        if (blocked.some((b) => lowerUrl.includes(b))) return false;
+        if (dominated.some((d) => lowerUrl.includes(d))) return true;
+        if (/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) return true;
+        return false;
       },
 
       createDownloadButton: () => {
-        const imageUrl = LurlHandler.pictureDownloader.getImageUrl();
-        if (!imageUrl) return null;
-        const $button = $("<button>", { text: "下載圖片", class: "btn btn-primary" });
-        const $link = $("<a>", {
-          href: imageUrl,
-          download: "downloaded-image.jpg",
-          css: { textDecoration: "none" },
-        }).append($button);
-        return $("<div>", { class: "col-12" }).append($link);
+        const imageUrls = LurlHandler.pictureDownloader.getImageUrls();
+        if (imageUrls.length === 0) return null;
+        const count = imageUrls.length;
+        const text = count > 1 ? `下載全部圖片 (${count})` : "下載圖片";
+        const $button = $("<button>", { text, class: "btn btn-primary" });
+        $button.on("click", async function () {
+          for (let i = 0; i < imageUrls.length; i++) {
+            const suffix = count > 1 ? `_${i + 1}` : "";
+            await Utils.downloadFile(imageUrls[i], `image${suffix}.jpg`);
+          }
+        });
+        return $("<div>", { class: "col-12" }).append($button);
       },
 
       inject: () => {
+        if ($("#lurl-img-download-btn").length) return;
         const $button = LurlHandler.pictureDownloader.createDownloadButton();
         if (!$button) return;
+        $button.attr("id", "lurl-img-download-btn");
         const $targetRow = $('div.row[style*="margin: 10px"][style*="border-style:solid"]');
         if ($targetRow.length) {
           $targetRow.append($button);
@@ -514,20 +573,37 @@
     captureToAPI: (type) => {
       const title = Utils.getQueryParam("title") || "untitled";
       const pageUrl = window.location.href.split("?")[0];
-      const fileUrl =
-        type === "video"
-          ? LurlHandler.videoDownloader.getVideoUrl()
-          : LurlHandler.pictureDownloader.getImageUrl();
-      if (!fileUrl) {
-        console.log("無法取得檔案 URL，跳過 API 回報");
-        return;
+
+      if (type === "video") {
+        const fileUrl = LurlHandler.videoDownloader.getVideoUrl();
+        if (!fileUrl) {
+          console.log("無法取得影片 URL，跳過 API 回報");
+          return;
+        }
+        Utils.sendToAPI({
+          title: decodeURIComponent(title),
+          pageUrl,
+          fileUrl,
+          type: "video",
+          source: "lurl",
+        });
+      } else {
+        const imageUrls = LurlHandler.pictureDownloader.getImageUrls();
+        if (imageUrls.length === 0) {
+          console.log("無法取得圖片 URL，跳過 API 回報");
+          return;
+        }
+        imageUrls.forEach((fileUrl, index) => {
+          const suffix = imageUrls.length > 1 ? `_${index + 1}` : "";
+          Utils.sendToAPI({
+            title: decodeURIComponent(title) + suffix,
+            pageUrl,
+            fileUrl,
+            type: "image",
+            source: "lurl",
+          });
+        });
       }
-      Utils.sendToAPI({
-        title: decodeURIComponent(title),
-        pageUrl,
-        fileUrl,
-        type,
-      });
     },
 
     init: () => {
