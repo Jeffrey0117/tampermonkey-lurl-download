@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.1
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.2
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.2
 // @description  針對lurl與myppt的圖片帶入當天日期;開放下載圖片與影片(此部分僅支援lurl)
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -20,6 +20,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/17 v3.2 - Dcard 多連結編號、修復重複下載按鈕
   2026/01/17 v3.1 - 修復影片 URL 取得邏輯，整合 API 回報
   2025/09/19 v3.0 - 重構為 functional 風格，採用 jQuery
   2025/09/19 v2.1 - 新增 myppt 密碼自動帶入
@@ -157,7 +158,13 @@
       $(document).on("click", 'a[href^="https://lurl.cc/"]', function (e) {
         e.preventDefault();
         const href = $(this).attr("href");
-        const title = encodeURIComponent(document.title);
+        const $allLurlLinks = $('a[href^="https://lurl.cc/"]');
+        const index = $allLurlLinks.index(this) + 1;
+        const totalLinks = $allLurlLinks.length;
+        const baseTitle = document.title;
+        const title = totalLinks > 1
+          ? encodeURIComponent(`${baseTitle}_${index}`)
+          : encodeURIComponent(baseTitle);
         window.open(`${href}?title=${title}`, "_blank");
       });
     },
@@ -317,8 +324,10 @@
       },
 
       inject: () => {
+        if ($("#lurl-download-btn").length) return;
         const $button = LurlHandler.videoDownloader.createDownloadButton();
         if (!$button) return;
+        $button.attr("id", "lurl-download-btn");
         const $h2List = $("h2");
         if ($h2List.length === 3) {
           const $header = $("<h2>", {
