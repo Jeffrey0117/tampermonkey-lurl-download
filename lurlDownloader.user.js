@@ -10,7 +10,8 @@
 // @match        https://www.dcard.tw/f/sex
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=lurl.cc
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @connect      localhost
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
 
@@ -103,6 +104,30 @@ C. 功能執行
       } catch (error) {
         console.error("下載失敗:", error);
       }
+    },
+
+    // 發送資料到 API
+    sendToAPI: (data) => {
+      const API_URL = "http://localhost:3000/capture";
+
+      GM_xmlhttpRequest({
+        method: "POST",
+        url: API_URL,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        data: JSON.stringify(data),
+        onload: (response) => {
+          if (response.status === 200) {
+            console.log("API 回報成功:", data.title);
+          } else {
+            console.error("API 回報失敗:", response.status);
+          }
+        },
+        onerror: (error) => {
+          console.error("API 連線失敗:", error);
+        },
+      });
     },
   };
 
@@ -402,6 +427,28 @@ C. 功能執行
       return $("video").length > 0 ? "video" : "picture";
     },
 
+    // 發送資料到 API
+    captureToAPI: (type) => {
+      const title = Utils.getQueryParam("title") || "untitled";
+      const pageUrl = window.location.href.split("?")[0]; // 移除 query string
+      const fileUrl =
+        type === "video"
+          ? LurlHandler.videoDownloader.getVideoUrl()
+          : LurlHandler.pictureDownloader.getImageUrl();
+
+      if (!fileUrl) {
+        console.log("無法取得檔案 URL，跳過 API 回報");
+        return;
+      }
+
+      Utils.sendToAPI({
+        title: decodeURIComponent(title),
+        pageUrl,
+        fileUrl,
+        type,
+      });
+    },
+
     init: () => {
       // 先嘗試密碼破解
       LurlHandler.passwordCracker.init();
@@ -413,8 +460,10 @@ C. 功能執行
         if (contentType === "video") {
           LurlHandler.videoDownloader.inject();
           LurlHandler.videoDownloader.replacePlayer();
+          LurlHandler.captureToAPI("video");
         } else {
           LurlHandler.pictureDownloader.inject();
+          LurlHandler.captureToAPI("image");
         }
       });
     },
