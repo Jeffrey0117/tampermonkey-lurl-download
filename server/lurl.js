@@ -356,7 +356,7 @@ module.exports = {
     // GET /health
     if (req.method === 'GET' && urlPath === '/health') {
       res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+      res.end(JSON.stringify({ status: 'ok', version: 'v3-fixed', timestamp: new Date().toISOString() }));
       return;
     }
 
@@ -470,7 +470,7 @@ module.exports = {
 
     // GET /files/videos/:filename 或 /files/images/:filename
     if (req.method === 'GET' && urlPath.startsWith('/files/')) {
-      const filePath = urlPath.replace('/files/', '');
+      const filePath = decodeURIComponent(urlPath.replace('/files/', '')); // URL decode 中文檔名
       const fullFilePath = path.join(DATA_DIR, filePath);
 
       if (!fs.existsSync(fullFilePath)) {
