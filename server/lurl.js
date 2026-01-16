@@ -192,11 +192,12 @@ function adminPage() {
         document.getElementById('records').innerHTML = '<div class="empty">尚無記錄</div>';
         return;
       }
+      const getTitle = (t) => (!t || t === 'untitle' || t === 'undefined') ? '未命名' : t;
       document.getElementById('records').innerHTML = filtered.map(r => \`
         <div class="record">
           <div class="record-type \${r.type}">\${r.type === 'video' ? '🎬' : '🖼️'}</div>
           <div class="record-info">
-            <div class="record-title">\${r.title || '無標題'}</div>
+            <div class="record-title">\${getTitle(r.title)}</div>
             <div class="record-meta">\${new Date(r.capturedAt).toLocaleString()}</div>
           </div>
           <div class="record-actions">
@@ -277,13 +278,16 @@ function browsePage() {
         document.getElementById('grid').innerHTML = '<div class="empty">尚無內容</div>';
         return;
       }
+      const getTitle = (t) => (!t || t === 'untitle' || t === 'undefined') ? '未命名' : t;
       document.getElementById('grid').innerHTML = filtered.map(r => \`
         <div class="card" onclick="window.open('/lurl/files/\${r.backupPath}', '_blank')">
           <div class="card-thumb">
-            \${r.type === 'video' ? '🎬' : '🖼️'}
+            \${r.type === 'image'
+              ? \`<img src="/lurl/files/\${r.backupPath}" alt="\${getTitle(r.title)}" onerror="this.outerHTML='🖼️'">\`
+              : '🎬'}
           </div>
           <div class="card-info">
-            <div class="card-title">\${r.title || '無標題'}</div>
+            <div class="card-title">\${getTitle(r.title)}</div>
             <div class="card-meta">\${new Date(r.capturedAt).toLocaleDateString()}</div>
           </div>
         </div>
@@ -453,14 +457,34 @@ module.exports = {
         '.gif': 'image/gif'
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
-
       const stat = fs.statSync(fullFilePath);
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Content-Length': stat.size,
-        'Access-Control-Allow-Origin': '*'
-      });
-      fs.createReadStream(fullFilePath).pipe(res);
+      const fileSize = stat.size;
+
+      // 支援 Range 請求（影片串流必需）
+      const range = req.headers.range;
+      if (range && contentType.startsWith('video/')) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize,
+          'Content-Type': contentType,
+          'Access-Control-Allow-Origin': '*'
+        });
+        fs.createReadStream(fullFilePath, { start, end }).pipe(res);
+      } else {
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Content-Length': fileSize,
+          'Accept-Ranges': 'bytes',
+          'Access-Control-Allow-Origin': '*'
+        });
+        fs.createReadStream(fullFilePath).pipe(res);
+      }
       return;
     }
 
