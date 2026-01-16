@@ -608,9 +608,17 @@ module.exports = {
     // GET /files/videos/:filename 或 /files/images/:filename
     if (req.method === 'GET' && urlPath.startsWith('/files/')) {
       const filePath = decodeURIComponent(urlPath.replace('/files/', '')); // URL decode 中文檔名
+
+      // 防止讀取資料夾
+      if (!filePath || filePath.endsWith('/') || !filePath.includes('.')) {
+        res.writeHead(400, corsHeaders());
+        res.end(JSON.stringify({ error: 'Invalid file path' }));
+        return;
+      }
+
       const fullFilePath = path.join(DATA_DIR, filePath);
 
-      if (!fs.existsSync(fullFilePath)) {
+      if (!fs.existsSync(fullFilePath) || fs.statSync(fullFilePath).isDirectory()) {
         res.writeHead(404, corsHeaders());
         res.end(JSON.stringify({ error: 'File not found' }));
         return;
