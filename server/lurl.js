@@ -50,24 +50,27 @@ function sanitizeFilename(filename) {
     .substring(0, 200) || 'untitled';
 }
 
-async function downloadFile(url, destPath, referer = '') {
+async function downloadFile(url, destPath, pageUrl = '') {
   try {
-    // 偽裝成瀏覽器請求
+    // 偽裝成瀏覽器請求 - 更完整的 headers
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': '*/*',
+      'Accept': 'video/*,image/*,*/*;q=0.8',
       'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'identity', // 不要壓縮，直接拿原始檔
+      'Accept-Encoding': 'identity',
+      'Connection': 'keep-alive',
+      'Sec-Fetch-Dest': 'video',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'cross-site',
     };
 
-    // 有些網站會檢查 Referer
-    if (referer) {
-      headers['Referer'] = referer;
-    } else {
-      // 嘗試從 URL 推測 referer
+    // Referer 用原始頁面 URL（重要！lurl 會檢查）
+    if (pageUrl) {
+      headers['Referer'] = pageUrl;
+      // 從 pageUrl 提取 origin
       try {
-        const urlObj = new URL(url);
-        headers['Referer'] = urlObj.origin + '/';
+        const urlObj = new URL(pageUrl);
+        headers['Origin'] = urlObj.origin;
       } catch {}
     }
 
@@ -280,8 +283,9 @@ function browsePage() {
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
     .card { background: #1a1a1a; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s; }
     .card:hover { transform: scale(1.02); }
-    .card-thumb { aspect-ratio: 16/9; background: #333; display: flex; align-items: center; justify-content: center; font-size: 48px; }
-    .card-thumb video, .card-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .card-thumb { aspect-ratio: 16/9; background: #333; display: flex; align-items: center; justify-content: center; font-size: 48px; overflow: hidden; }
+    .card-thumb video, .card-thumb img { width: 100%; height: 100%; object-fit: cover; filter: blur(8px); transition: filter 0.3s; }
+    .card:hover .card-thumb video, .card:hover .card-thumb img { filter: blur(4px); }
     .card-info { padding: 12px; }
     .card-title { font-size: 0.95em; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .card-meta { font-size: 0.8em; color: #aaa; margin-top: 8px; }
