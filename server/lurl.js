@@ -131,9 +131,13 @@ function adminPage() {
   <title>Lurl Admin</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    h1 { margin-bottom: 20px; color: #333; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 1.3em; }
+    .header nav { display: flex; gap: 20px; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover, .header nav a.active { color: white; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px; }
     .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .stat-card h3 { font-size: 2em; color: #2196F3; }
@@ -155,8 +159,15 @@ function adminPage() {
   </style>
 </head>
 <body>
+  <div class="header">
+    <h1>Lurl</h1>
+    <nav>
+      <a href="/lurl/admin" class="active">管理面板</a>
+      <a href="/lurl/browse">影片庫</a>
+      <a href="/lurl/health">API 狀態</a>
+    </nav>
+  </div>
   <div class="container">
-    <h1>Lurl 管理面板</h1>
     <div class="stats" id="stats"></div>
     <div class="tabs">
       <button class="tab active" data-type="all">全部</button>
@@ -234,8 +245,11 @@ function browsePage() {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { padding: 20px; background: #1a1a1a; }
-    .header h1 { font-size: 1.5em; }
+    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 1.3em; }
+    .header nav { display: flex; gap: 20px; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover, .header nav a.active { color: white; }
     .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
     .card { background: #1a1a1a; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s; }
@@ -252,7 +266,14 @@ function browsePage() {
   </style>
 </head>
 <body>
-  <div class="header"><h1>Lurl 影片庫</h1></div>
+  <div class="header">
+    <h1>Lurl</h1>
+    <nav>
+      <a href="/lurl/admin">管理面板</a>
+      <a href="/lurl/browse" class="active">影片庫</a>
+      <a href="/lurl/health">API 狀態</a>
+    </nav>
+  </div>
   <div class="container">
     <div class="tabs">
       <button class="tab active" data-type="all">全部</button>
@@ -347,6 +368,16 @@ module.exports = {
         if (!title || !pageUrl || !fileUrl) {
           res.writeHead(400, corsHeaders());
           res.end(JSON.stringify({ ok: false, error: '缺少必要欄位' }));
+          return;
+        }
+
+        // 去重：檢查 fileUrl 是否已存在
+        const existingRecords = readAllRecords();
+        const duplicate = existingRecords.find(r => r.fileUrl === fileUrl);
+        if (duplicate) {
+          console.log(`[lurl] 跳過重複: ${fileUrl}`);
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, duplicate: true, existingId: duplicate.id }));
           return;
         }
 
