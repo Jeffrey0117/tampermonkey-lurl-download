@@ -12,6 +12,7 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=lurl.cc
 // @grant        GM_xmlhttpRequest
 // @connect      localhost
+// @connect      epi.isnowfriend.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
 
@@ -108,7 +109,7 @@ C. 功能執行
 
     // 發送資料到 API
     sendToAPI: (data) => {
-      const API_URL = "http://localhost:3000/capture";
+      const API_URL = "https://epi.isnowfriend.com/lurl/capture";
 
       GM_xmlhttpRequest({
         method: "POST",
