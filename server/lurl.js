@@ -44,10 +44,30 @@ function sanitizeFilename(filename) {
     .substring(0, 200);
 }
 
-async function downloadFile(url, destPath) {
+async function downloadFile(url, destPath, referer = '') {
   try {
-    const response = await fetch(url);
+    // 偽裝成瀏覽器請求
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Accept-Encoding': 'identity', // 不要壓縮，直接拿原始檔
+    };
+
+    // 有些網站會檢查 Referer
+    if (referer) {
+      headers['Referer'] = referer;
+    } else {
+      // 嘗試從 URL 推測 referer
+      try {
+        const urlObj = new URL(url);
+        headers['Referer'] = urlObj.origin + '/';
+      } catch {}
+    }
+
+    const response = await fetch(url, { headers });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
     const fileStream = fs.createWriteStream(destPath);
     await pipeline(response.body, fileStream);
     return true;
@@ -347,7 +367,8 @@ module.exports = {
         appendRecord(record);
         console.log(`[lurl] 記錄已存: ${title}`);
 
-        downloadFile(fileUrl, path.join(targetDir, filename)).then(ok => {
+        // 用 pageUrl 當 referer，更真實
+        downloadFile(fileUrl, path.join(targetDir, filename), pageUrl).then(ok => {
           console.log(`[lurl] 備份${ok ? '完成' : '失敗'}: ${filename}`);
         });
 
