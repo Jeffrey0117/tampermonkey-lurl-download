@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.4
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.5
 // @namespace    http://tampermonkey.net/
-// @version      3.4
+// @version      3.5
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -20,6 +20,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/17 v3.5 - 修復 myppt reload 導致 title 遺失問題
   2026/01/17 v3.4 - Dcard 攔截 myppt 連結、新增回到D卡按鈕
   2026/01/17 v3.3 - myppt 支援下載與 API 回報
   2026/01/17 v3.2 - Dcard 多連結編號、修復重複下載按鈕
@@ -135,7 +136,7 @@
 
   const BackToDcardButton = {
     create: () => {
-      const ref = Utils.getQueryParam("ref");
+      const ref = Utils.getQueryParam("ref") || sessionStorage.getItem("myppt_ref");
       if (!ref) return null;
       const $button = $("<a>", {
         href: ref,
@@ -166,6 +167,21 @@
   };
 
   const MypptHandler = {
+    saveQueryParams: () => {
+      const title = Utils.getQueryParam("title");
+      const ref = Utils.getQueryParam("ref");
+      if (title) sessionStorage.setItem("myppt_title", title);
+      if (ref) sessionStorage.setItem("myppt_ref", ref);
+    },
+
+    getTitle: () => {
+      return Utils.getQueryParam("title") || sessionStorage.getItem("myppt_title") || "untitled";
+    },
+
+    getRef: () => {
+      return Utils.getQueryParam("ref") || sessionStorage.getItem("myppt_ref") || null;
+    },
+
     getUploadDate: () => {
       const $dateSpan = $(".login_span").eq(1);
       if ($dateSpan.length === 0) return null;
@@ -175,6 +191,7 @@
     autoFillPassword: () => {
       const date = MypptHandler.getUploadDate();
       if (!date) return;
+      MypptHandler.saveQueryParams();
       $("#pasahaicsword").val(date);
       $("#main_fjim60unBU").click();
       location.reload();
@@ -223,7 +240,7 @@
       createDownloadButton: () => {
         const videoUrl = MypptHandler.videoDownloader.getVideoUrl();
         if (!videoUrl) return null;
-        const title = Utils.getQueryParam("title") || "video";
+        const title = MypptHandler.getTitle();
         const $button = $("<a>", {
           href: videoUrl,
           download: `${title}.mp4`,
@@ -262,7 +279,7 @@
     },
 
     captureToAPI: (type) => {
-      const title = Utils.getQueryParam("title") || "untitled";
+      const title = MypptHandler.getTitle();
       const pageUrl = window.location.href.split("?")[0];
       const fileUrl =
         type === "video"
