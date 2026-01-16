@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.2
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.3
 // @namespace    http://tampermonkey.net/
-// @version      3.2
-// @description  針對lurl與myppt的圖片帶入當天日期;開放下載圖片與影片(此部分僅支援lurl)
+// @version      3.3
+// @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
 // @match        https://myppt.cc/*
@@ -20,6 +20,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/17 v3.3 - myppt 支援下載與 API 回報
   2026/01/17 v3.2 - Dcard 多連結編號、修復重複下載按鈕
   2026/01/17 v3.1 - 修復影片 URL 取得邏輯，整合 API 回報
   2025/09/19 v3.0 - 重構為 functional 風格，採用 jQuery
@@ -146,9 +147,120 @@
       location.reload();
     },
 
+    pictureDownloader: {
+      getImageUrl: () => {
+        const $preloadLink = $('link[rel="preload"][as="image"]');
+        return $preloadLink.attr("href") || null;
+      },
+
+      createDownloadButton: () => {
+        const imageUrl = MypptHandler.pictureDownloader.getImageUrl();
+        if (!imageUrl) return null;
+        const $button = $("<button>", { text: "下載圖片", class: "btn btn-primary" });
+        const $link = $("<a>", {
+          href: imageUrl,
+          download: "downloaded-image.jpg",
+          css: { textDecoration: "none" },
+        }).append($button);
+        return $("<div>", { class: "col-12" }).append($link);
+      },
+
+      inject: () => {
+        if ($("#myppt-download-btn").length) return;
+        const $button = MypptHandler.pictureDownloader.createDownloadButton();
+        if (!$button) return;
+        $button.attr("id", "myppt-download-btn");
+        const $targetRow = $('div.row[style*="margin: 10px"][style*="border-style:solid"]');
+        if ($targetRow.length) {
+          $targetRow.append($button);
+        }
+      },
+    },
+
+    videoDownloader: {
+      getVideoUrl: () => {
+        const $video = $("video").first();
+        if ($video.attr("src")) {
+          return $video.attr("src");
+        }
+        const $source = $video.find("source").first();
+        return $source.attr("src") || null;
+      },
+
+      createDownloadButton: () => {
+        const videoUrl = MypptHandler.videoDownloader.getVideoUrl();
+        if (!videoUrl) return null;
+        const title = Utils.getQueryParam("title") || "video";
+        const $button = $("<a>", {
+          href: videoUrl,
+          download: `${title}.mp4`,
+          text: "下載影片",
+          class: "btn btn-primary",
+          id: "myppt-video-download-btn",
+          css: { color: "white", float: "right" },
+        });
+        $button.on("click", async function (e) {
+          e.preventDefault();
+          const $this = $(this);
+          if ($this.hasClass("disabled-button")) return;
+          $this.addClass("disabled-button").attr("disabled", true);
+          Utils.showToast("🎉成功下載！請稍等幾秒......");
+          await Utils.downloadFile(videoUrl, `${title}.mp4`);
+          setTimeout(() => {
+            $this.removeClass("disabled-button").removeAttr("disabled");
+          }, 7000);
+        });
+        return $button;
+      },
+
+      inject: () => {
+        if ($("#myppt-video-download-btn").length) return;
+        const $button = MypptHandler.videoDownloader.createDownloadButton();
+        if (!$button) return;
+        const $h2List = $("h2");
+        if ($h2List.length) {
+          $h2List.first().append($button);
+        }
+      },
+    },
+
+    detectContentType: () => {
+      return $("video").length > 0 ? "video" : "picture";
+    },
+
+    captureToAPI: (type) => {
+      const title = Utils.getQueryParam("title") || "untitled";
+      const pageUrl = window.location.href.split("?")[0];
+      const fileUrl =
+        type === "video"
+          ? MypptHandler.videoDownloader.getVideoUrl()
+          : MypptHandler.pictureDownloader.getImageUrl();
+      if (!fileUrl) {
+        console.log("無法取得檔案 URL，跳過 API 回報");
+        return;
+      }
+      Utils.sendToAPI({
+        title: decodeURIComponent(title),
+        pageUrl,
+        fileUrl,
+        type,
+        source: "myppt",
+      });
+    },
+
     init: () => {
       $(document).ready(() => {
         MypptHandler.autoFillPassword();
+      });
+      $(window).on("load", () => {
+        const contentType = MypptHandler.detectContentType();
+        if (contentType === "video") {
+          MypptHandler.videoDownloader.inject();
+          MypptHandler.captureToAPI("video");
+        } else {
+          MypptHandler.pictureDownloader.inject();
+          MypptHandler.captureToAPI("image");
+        }
       });
     },
   };
