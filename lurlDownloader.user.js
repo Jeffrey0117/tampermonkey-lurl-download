@@ -334,7 +334,13 @@ C. 功能執行
     // 影片下載模組
     videoDownloader: {
       getVideoUrl: () => {
-        const $source = $("source").first();
+        const $video = $("video").first();
+        // 先檢查 video 本身的 src
+        if ($video.attr("src")) {
+          return $video.attr("src");
+        }
+        // 再檢查 source 子元素
+        const $source = $video.find("source").first();
         return $source.attr("src") || null;
       },
 
