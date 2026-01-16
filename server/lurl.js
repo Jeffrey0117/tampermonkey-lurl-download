@@ -41,9 +41,13 @@ function sanitizeFilename(filename) {
   return filename
     .replace(/[/\\:*?"<>|]/g, '_')
     .replace(/\s+/g, '_')
-    .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]/gu, '') // 移除 emoji
+    // 移除所有 emoji（更全面的範圍）
+    .replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FE0F}]|[\u{1F900}-\u{1F9FF}]/gu, '')
+    // 移除其他特殊符號
+    .replace(/[^\w\u4e00-\u9fff\u3400-\u4dbf._-]/g, '')
     .replace(/_+/g, '_') // 多個底線合併
-    .substring(0, 200);
+    .replace(/^_|_$/g, '') // 移除開頭結尾底線
+    .substring(0, 200) || 'untitled';
 }
 
 async function downloadFile(url, destPath, referer = '') {
@@ -323,7 +327,7 @@ function browsePage() {
       }
       const getTitle = (t) => (!t || t === 'untitle' || t === 'undefined') ? '未命名' : t;
       document.getElementById('grid').innerHTML = filtered.map(r => \`
-        <div class="card" onclick="window.open('/lurl/files/\${r.backupPath}', '_blank')">
+        <div class="card" onclick="window.location.href='/lurl/view/\${r.id}'">
           <div class="card-thumb">
             \${r.type === 'image'
               ? \`<img src="/lurl/files/\${r.backupPath}" alt="\${getTitle(r.title)}" onerror="this.outerHTML='🖼️'">\`
@@ -348,6 +352,72 @@ function browsePage() {
 
     loadRecords();
   </script>
+</body>
+</html>`;
+}
+
+function viewPage(record) {
+  const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? '未命名' : t;
+  const title = getTitle(record.title);
+  const isVideo = record.type === 'video';
+
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} - Lurl</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
+    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 1.3em; }
+    .header nav { display: flex; gap: 20px; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover { color: white; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+    .media-container video, .media-container img { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
+    .info { background: #1a1a1a; border-radius: 12px; padding: 20px; }
+    .info h2 { font-size: 1.3em; margin-bottom: 15px; line-height: 1.4; }
+    .info-row { display: flex; gap: 10px; margin-bottom: 10px; color: #aaa; font-size: 0.9em; }
+    .info-row span { color: #666; }
+    .actions { display: flex; gap: 10px; margin-top: 20px; }
+    .btn { padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 0.95em; }
+    .btn-primary { background: #2196F3; color: white; }
+    .btn-secondary { background: #333; color: white; }
+    .btn:hover { opacity: 0.9; }
+    .back-link { display: inline-block; margin-bottom: 20px; color: #aaa; text-decoration: none; }
+    .back-link:hover { color: white; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Lurl</h1>
+    <nav>
+      <a href="/lurl/admin">管理面板</a>
+      <a href="/lurl/browse">影片庫</a>
+    </nav>
+  </div>
+  <div class="container">
+    <a href="/lurl/browse" class="back-link">← 返回影片庫</a>
+    <div class="media-container">
+      ${isVideo
+        ? `<video src="/lurl/files/${record.backupPath}" controls autoplay></video>`
+        : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`
+      }
+    </div>
+    <div class="info">
+      <h2>${title}</h2>
+      <div class="info-row"><span>類型：</span>${isVideo ? '影片' : '圖片'}</div>
+      <div class="info-row"><span>來源：</span>${record.source || 'lurl'}</div>
+      <div class="info-row"><span>收錄時間：</span>${new Date(record.capturedAt).toLocaleString('zh-TW')}</div>
+      <div class="actions">
+        <a href="/lurl/files/${record.backupPath}" download class="btn btn-primary">下載</a>
+        <a href="${record.pageUrl}" target="_blank" class="btn btn-secondary">原始連結</a>
+      </div>
+    </div>
+  </div>
 </body>
 </html>`;
 }
@@ -515,6 +585,23 @@ module.exports = {
     if (req.method === 'GET' && urlPath === '/browse') {
       res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
       res.end(browsePage());
+      return;
+    }
+
+    // GET /view/:id
+    if (req.method === 'GET' && urlPath.startsWith('/view/')) {
+      const id = urlPath.replace('/view/', '');
+      const records = readAllRecords();
+      const record = records.find(r => r.id === id);
+
+      if (!record) {
+        res.writeHead(404, corsHeaders('text/html; charset=utf-8'));
+        res.end('<h1>404 - 找不到此內容</h1><a href="/lurl/browse">返回影片庫</a>');
+        return;
+      }
+
+      res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
+      res.end(viewPage(record));
       return;
     }
 
