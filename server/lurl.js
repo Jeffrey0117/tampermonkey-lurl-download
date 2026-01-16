@@ -386,7 +386,8 @@ module.exports = {
         const safeTitle = sanitizeFilename(title);
         const filename = `${safeTitle}${ext}`;
         const targetDir = type === 'video' ? VIDEOS_DIR : IMAGES_DIR;
-        const backupPath = path.join(type === 'video' ? 'videos' : 'images', filename);
+        const folder = type === 'video' ? 'videos' : 'images';
+        const backupPath = `${folder}/${filename}`; // 用正斜線，URL 才正確
 
         const record = {
           id: Date.now().toString(36),
