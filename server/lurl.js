@@ -41,6 +41,8 @@ function sanitizeFilename(filename) {
   return filename
     .replace(/[/\\:*?"<>|]/g, '_')
     .replace(/\s+/g, '_')
+    .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]/gu, '') // 移除 emoji
+    .replace(/_+/g, '_') // 多個底線合併
     .substring(0, 200);
 }
 
