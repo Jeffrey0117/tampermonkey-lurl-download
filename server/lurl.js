@@ -364,6 +364,14 @@ function adminPage() {
     .toast.success { background: #4caf50; }
     .toast.error { background: #e53935; }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Maintenance Grid */
+    .maintenance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; }
+    .maintenance-item { background: #f9f9f9; padding: 15px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+    .maintenance-icon { font-size: 1.5em; }
+    .maintenance-label { font-size: 0.85em; color: #666; font-weight: 500; }
+    .maintenance-status { font-size: 0.75em; color: #999; min-height: 1.2em; }
+    .btn-sm { padding: 6px 12px; font-size: 0.85em; }
   </style>
 </head>
 <body>
@@ -420,43 +428,36 @@ function adminPage() {
     <!-- 資料維護 -->
     <div class="version-panel" style="margin-top: 20px;">
       <h2>🔧 資料維護</h2>
-      <div class="version-form">
-        <div class="form-group">
-          <label>修復 untitled 記錄 - 將所有 "untitled" 標題改為 "untitled_[ID]"</label>
-          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
-            <button class="btn btn-primary" onclick="fixUntitled()">🔧 修復 Untitled</button>
-            <span id="untitledStatus" style="color: #666;"></span>
-          </div>
+      <div class="maintenance-grid">
+        <div class="maintenance-item">
+          <div class="maintenance-icon">🔧</div>
+          <div class="maintenance-label">修復 Untitled</div>
+          <button class="btn btn-primary btn-sm" onclick="fixUntitled()">執行</button>
+          <div class="maintenance-status" id="untitledStatus"></div>
         </div>
-        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
-          <label>重試下載失敗的檔案 - 使用 Puppeteer 瀏覽器重新抓取</label>
-          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
-            <button class="btn btn-primary" onclick="retryFailed()" id="retryBtn">🔄 重試失敗下載</button>
-            <span id="retryStatus" style="color: #666;">載入中...</span>
-          </div>
-          <small style="color: #888; margin-top: 5px; display: block;">※ 處理需要一些時間，請在 console 查看進度</small>
+        <div class="maintenance-item">
+          <div class="maintenance-icon">🔄</div>
+          <div class="maintenance-label">重試下載</div>
+          <button class="btn btn-primary btn-sm" onclick="retryFailed()" id="retryBtn">執行</button>
+          <div class="maintenance-status" id="retryStatus">-</div>
         </div>
-        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
-          <label>產生影片縮圖 - 使用 ffmpeg 擷取影片第 1 秒畫面</label>
-          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
-            <button class="btn btn-primary" onclick="generateThumbnails()" id="thumbBtn">🖼️ 產生縮圖</button>
-            <span id="thumbStatus" style="color: #666;">載入中...</span>
-          </div>
-          <small style="color: #888; margin-top: 5px; display: block;">※ 需要安裝 ffmpeg</small>
+        <div class="maintenance-item">
+          <div class="maintenance-icon">🖼️</div>
+          <div class="maintenance-label">產生縮圖</div>
+          <button class="btn btn-primary btn-sm" onclick="generateThumbnails()" id="thumbBtn">執行</button>
+          <div class="maintenance-status" id="thumbStatus">-</div>
         </div>
-        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
-          <label>清理重複記錄 - 相同 CDN URL 只保留第一筆</label>
-          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
-            <button class="btn btn-primary" onclick="cleanupDuplicates()" id="dupBtn">🗑️ 清理重複</button>
-            <span id="dupStatus" style="color: #666;"></span>
-          </div>
+        <div class="maintenance-item">
+          <div class="maintenance-icon">🗑️</div>
+          <div class="maintenance-label">清理重複</div>
+          <button class="btn btn-primary btn-sm" onclick="cleanupDuplicates()" id="dupBtn">執行</button>
+          <div class="maintenance-status" id="dupStatus">-</div>
         </div>
-        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
-          <label>修復檔案路徑 - 重複的 backupPath 改為唯一，然後重新下載</label>
-          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
-            <button class="btn btn-primary" onclick="repairPaths()" id="repairBtn">🔧 修復路徑</button>
-            <span id="repairStatus" style="color: #666;"></span>
-          </div>
+        <div class="maintenance-item">
+          <div class="maintenance-icon">📁</div>
+          <div class="maintenance-label">修復路徑</div>
+          <button class="btn btn-primary btn-sm" onclick="repairPaths()" id="repairBtn">執行</button>
+          <div class="maintenance-status" id="repairStatus">-</div>
         </div>
       </div>
     </div>
@@ -903,6 +904,25 @@ function browsePage() {
       z-index: 1000;
     }
     .toast.show { opacity: 1; }
+
+    /* Card Actions (Rating & Block) */
+    .card-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .card-actions button {
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #333;
+      color: #aaa;
+      font-size: 0.9em;
+      transition: all 0.2s;
+    }
+    .card-actions button:hover { background: #444; color: white; }
+    .card-actions .btn-like.active { background: #4caf50; color: white; }
+    .card-actions .btn-dislike.active { background: #f44336; color: white; }
+    .card-actions .btn-block:hover { background: #c62828; color: white; }
+    .card.blocked { opacity: 0.5; }
+    .card.blocked .card-thumb { filter: grayscale(1); }
   </style>
 </head>
 <body>
@@ -926,6 +946,7 @@ function browsePage() {
         <button class="tab" data-type="video">影片</button>
         <button class="tab" data-type="image">圖片</button>
         <button class="tab" data-type="pending" style="background:#f59e0b;color:#000;">未下載</button>
+        <button class="tab" data-type="blocked" style="background:#666;">🚫 已封鎖</button>
       </div>
       <div class="result-count" id="resultCount"></div>
     </div>
@@ -1015,7 +1036,7 @@ function browsePage() {
       const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
 
       const html = allRecords.map(r => \`
-        <div class="card" onclick="window.location.href='/lurl/view/\${r.id}'">
+        <div class="card \${r.blocked ? 'blocked' : ''}" onclick="window.location.href='/lurl/view/\${r.id}'">
           <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
             \${r.fileExists
               ? (r.type === 'image'
@@ -1032,6 +1053,11 @@ function browsePage() {
               <span class="card-id" onclick="event.stopPropagation();copyId('\${r.id}')" title="Click to copy">#\${r.id}</span>
             </div>
             \${!r.fileExists ? '<div class="card-status">Backup pending</div>' : ''}
+            <div class="card-actions">
+              <button class="btn-like \${r.myVote === 'like' ? 'active' : ''}" onclick="event.stopPropagation();vote('\${r.id}', 'like')" title="讚">👍 \${r.likeCount || 0}</button>
+              <button class="btn-dislike \${r.myVote === 'dislike' ? 'active' : ''}" onclick="event.stopPropagation();vote('\${r.id}', 'dislike')" title="倒讚">👎 \${r.dislikeCount || 0}</button>
+              <button class="btn-block" onclick="event.stopPropagation();block('\${r.id}', \${!r.blocked})" title="\${r.blocked ? '解除封鎖' : '封鎖'}">\${r.blocked ? '✅' : '🚫'}</button>
+            </div>
           </div>
         </div>
       \`).join('');
@@ -1059,6 +1085,68 @@ function browsePage() {
       toast.textContent = msg;
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    async function vote(id, voteType) {
+      const record = allRecords.find(r => r.id === id);
+      if (!record) return;
+
+      try {
+        const res = await fetch(\`/lurl/api/records/\${id}/vote\`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vote: voteType })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          // 更新本地記錄
+          record.likeCount = data.likeCount;
+          record.dislikeCount = data.dislikeCount;
+          record.myVote = data.myVote;
+          renderGrid();
+          if (data.myVote === 'like') showToast('👍 已按讚');
+          else if (data.myVote === 'dislike') showToast('👎 已倒讚');
+          else showToast('已取消投票');
+        }
+      } catch (e) {
+        showToast('操作失敗');
+      }
+    }
+
+    async function block(id, doBlock) {
+      const action = doBlock ? '封鎖此內容？檔案將被刪除。' : '解除封鎖？';
+      if (!confirm(action)) return;
+
+      try {
+        const res = await fetch(\`/lurl/api/records/\${id}/block\`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ block: doBlock })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          if (doBlock) {
+            // 封鎖後從列表移除（除非在已封鎖 tab）
+            if (currentType !== 'blocked') {
+              allRecords = allRecords.filter(r => r.id !== id);
+              totalRecords--;
+            } else {
+              const record = allRecords.find(r => r.id === id);
+              if (record) record.blocked = true;
+            }
+          } else {
+            // 解除封鎖後從已封鎖列表移除
+            if (currentType === 'blocked') {
+              allRecords = allRecords.filter(r => r.id !== id);
+              totalRecords--;
+            }
+          }
+          renderGrid();
+          showToast(doBlock ? '🚫 已封鎖' : '✅ 已解除封鎖');
+        }
+      } catch (e) {
+        showToast('操作失敗');
+      }
     }
 
     // Tab click
@@ -1274,8 +1362,17 @@ module.exports = {
           return;
         }
 
-        // 去重：用 pageUrl 或 fileUrl 判斷
+        // 去重與封鎖檢查
         const existingRecords = readAllRecords();
+
+        // 檢查 fileUrl 是否已被封鎖
+        const blockedRecord = existingRecords.find(r => r.fileUrl === fileUrl && r.blocked);
+        if (blockedRecord) {
+          console.log(`[lurl] 跳過已封鎖內容: ${fileUrl}`);
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, blocked: true, message: '此內容已被封鎖' }));
+          return;
+        }
         const duplicate = existingRecords.find(r => r.pageUrl === pageUrl || r.fileUrl === fileUrl);
         if (duplicate) {
           // 檢查檔案是否真的存在
@@ -1502,10 +1599,32 @@ module.exports = {
         fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath))
       }));
 
+      // Blocked filter (預設不顯示封鎖的，除非明確指定)
+      const blocked = query.blocked;
+      if (blocked === 'true') {
+        records = records.filter(r => r.blocked);
+      } else if (blocked !== 'all') {
+        // 預設：不顯示封鎖的
+        records = records.filter(r => !r.blocked);
+      }
+
+      // Rating filter
+      const rating = query.rating;
+      if (rating === 'like') {
+        records = records.filter(r => r.rating === 'like');
+      } else if (rating === 'dislike') {
+        records = records.filter(r => r.rating === 'dislike');
+      }
+
       // Type filter
       if (type === 'pending') {
         // 未下載：只顯示檔案不存在的
         records = records.filter(r => !r.fileExists);
+      } else if (type === 'blocked') {
+        // 已封鎖的：只顯示 blocked=true (已被上面的 blocked filter 過濾，這裡要重新讀取)
+        records = readAllRecords().reverse()
+          .map(r => ({ ...r, fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)) }))
+          .filter(r => r.blocked);
       } else {
         // 全部/影片/圖片：只顯示已下載的
         records = records.filter(r => r.fileExists);
@@ -2007,6 +2126,152 @@ module.exports = {
       console.log(`[lurl] 已刪除: ${record.title}`);
       res.writeHead(200, corsHeaders());
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // POST /api/records/:id/vote (需要登入) - 投票（計數版）
+    if (req.method === 'POST' && urlPath.match(/^\/api\/records\/[^/]+\/vote$/)) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+      const id = urlPath.split('/')[3];
+      const body = await parseBody(req);
+      const vote = body.vote; // 'like' | 'dislike'
+
+      if (vote !== 'like' && vote !== 'dislike') {
+        res.writeHead(400, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Invalid vote value' }));
+        return;
+      }
+
+      const records = readAllRecords();
+      const recordIndex = records.findIndex(r => r.id === id);
+
+      if (recordIndex === -1) {
+        res.writeHead(404, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '記錄不存在' }));
+        return;
+      }
+
+      const record = records[recordIndex];
+      const oldVote = record.myVote || null;
+
+      // 初始化計數（舊記錄可能沒有）
+      if (typeof record.likeCount !== 'number') record.likeCount = 0;
+      if (typeof record.dislikeCount !== 'number') record.dislikeCount = 0;
+
+      // 投票邏輯
+      if (vote === oldVote) {
+        // 點同一個 = 取消投票
+        record.myVote = null;
+        if (oldVote === 'like') record.likeCount = Math.max(0, record.likeCount - 1);
+        if (oldVote === 'dislike') record.dislikeCount = Math.max(0, record.dislikeCount - 1);
+      } else {
+        // 點不同的 = 切換投票
+        if (oldVote === 'like') record.likeCount = Math.max(0, record.likeCount - 1);
+        if (oldVote === 'dislike') record.dislikeCount = Math.max(0, record.dislikeCount - 1);
+        if (vote === 'like') record.likeCount++;
+        if (vote === 'dislike') record.dislikeCount++;
+        record.myVote = vote;
+      }
+
+      fs.writeFileSync(RECORDS_FILE, records.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+
+      console.log(`[lurl] 投票更新: ${record.title} -> ${record.myVote} (👍${record.likeCount} 👎${record.dislikeCount})`);
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        likeCount: record.likeCount,
+        dislikeCount: record.dislikeCount,
+        myVote: record.myVote
+      }));
+      return;
+    }
+
+    // POST /api/records/:id/block (需要登入) - 封鎖/解除封鎖
+    if (req.method === 'POST' && urlPath.match(/^\/api\/records\/[^/]+\/block$/)) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+      const id = urlPath.split('/')[3];
+      const body = await parseBody(req);
+      const block = body.block; // true | false
+
+      const records = readAllRecords();
+      const recordIndex = records.findIndex(r => r.id === id);
+
+      if (recordIndex === -1) {
+        res.writeHead(404, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '記錄不存在' }));
+        return;
+      }
+
+      const record = records[recordIndex];
+      let deleted = false;
+
+      if (block) {
+        // 封鎖：刪除本地檔案和縮圖，保留記錄
+        record.blocked = true;
+        record.blockedAt = new Date().toISOString();
+
+        // 刪除主檔案
+        const filePath = path.join(DATA_DIR, record.backupPath);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          deleted = true;
+        }
+
+        // 刪除縮圖
+        if (record.thumbnailPath) {
+          const thumbPath = path.join(DATA_DIR, record.thumbnailPath);
+          if (fs.existsSync(thumbPath)) {
+            fs.unlinkSync(thumbPath);
+          }
+        }
+
+        record.fileExists = false;
+        console.log(`[lurl] 封鎖: ${record.title}`);
+      } else {
+        // 解除封鎖：清除封鎖狀態
+        record.blocked = false;
+        record.blockedAt = null;
+        record.fileExists = false; // 需要重新下載
+        console.log(`[lurl] 解除封鎖: ${record.title}`);
+      }
+
+      fs.writeFileSync(RECORDS_FILE, records.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true, deleted }));
+      return;
+    }
+
+    // GET /api/blocked-urls (Client Token 驗證) - 給 Userscript 的封鎖清單
+    if (req.method === 'GET' && urlPath === '/api/blocked-urls') {
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.replace('Bearer ', '');
+
+      if (token !== CLIENT_TOKEN && !isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+
+      const records = readAllRecords();
+      const blockedUrls = records
+        .filter(r => r.blocked)
+        .map(r => r.fileUrl);
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        urls: blockedUrls,
+        count: blockedUrls.length,
+        updatedAt: new Date().toISOString()
+      }));
       return;
     }
 

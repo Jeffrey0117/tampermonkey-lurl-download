@@ -505,6 +505,49 @@
     },
   };
 
+  // 封鎖清單快取（避免重複下載已封鎖的內容）
+  const BlockedCache = {
+    urls: new Set(),
+    lastFetch: 0,
+    CACHE_DURATION: 5 * 60 * 1000, // 5 分鐘快取
+
+    refresh: function() {
+      return new Promise((resolve) => {
+        if (Date.now() - this.lastFetch < this.CACHE_DURATION) {
+          resolve();
+          return;
+        }
+
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: `${API_BASE}/api/blocked-urls`,
+          headers: { 'Authorization': `Bearer ${CLIENT_TOKEN}` },
+          onload: (response) => {
+            try {
+              if (response.status === 200) {
+                const data = JSON.parse(response.responseText);
+                this.urls = new Set(data.urls || []);
+                this.lastFetch = Date.now();
+                console.log(`[lurl] 封鎖清單已更新: ${this.urls.size} 項`);
+              }
+            } catch (e) {
+              console.error('[lurl] 封鎖清單解析失敗:', e);
+            }
+            resolve();
+          },
+          onerror: (e) => {
+            console.error('[lurl] 無法取得封鎖清單:', e);
+            resolve();
+          }
+        });
+      });
+    },
+
+    isBlocked: function(fileUrl) {
+      return this.urls.has(fileUrl);
+    }
+  };
+
   const MypptHandler = {
     saveQueryParams: () => {
       const title = Utils.getQueryParam("title");
@@ -638,6 +681,9 @@
     },
 
     captureToAPI: async (type) => {
+      // 先更新封鎖清單
+      await BlockedCache.refresh();
+
       const title = MypptHandler.getTitle();
       const pageUrl = window.location.href.split("?")[0];
       const ref = MypptHandler.getRef(); // D卡文章連結
@@ -646,6 +692,11 @@
         const fileUrl = MypptHandler.videoDownloader.getVideoUrl();
         if (!fileUrl) {
           console.log("無法取得影片 URL，跳過 API 回報");
+          return;
+        }
+        // 檢查是否已封鎖
+        if (BlockedCache.isBlocked(fileUrl)) {
+          console.log("[lurl] 跳過已封鎖內容:", fileUrl);
           return;
         }
         // 提取縮圖
@@ -665,8 +716,13 @@
           console.log("無法取得圖片 URL，跳過 API 回報");
           return;
         }
-        imageUrls.forEach((fileUrl, index) => {
-          const suffix = imageUrls.length > 1 ? `_${index + 1}` : "";
+        // 過濾掉已封鎖的 URLs
+        const filteredUrls = imageUrls.filter(url => !BlockedCache.isBlocked(url));
+        if (filteredUrls.length < imageUrls.length) {
+          console.log(`[lurl] 已過濾 ${imageUrls.length - filteredUrls.length} 個封鎖的圖片`);
+        }
+        filteredUrls.forEach((fileUrl, index) => {
+          const suffix = filteredUrls.length > 1 ? `_${index + 1}` : "";
           Utils.sendToAPI({
             title: decodeURIComponent(title) + suffix,
             pageUrl,
@@ -916,6 +972,9 @@
     },
 
     captureToAPI: async (type) => {
+      // 先更新封鎖清單
+      await BlockedCache.refresh();
+
       const title = Utils.getQueryParam("title") || "untitled";
       const pageUrl = window.location.href.split("?")[0];
       const ref = Utils.getQueryParam("ref"); // D卡文章連結
@@ -924,6 +983,11 @@
         const fileUrl = LurlHandler.videoDownloader.getVideoUrl();
         if (!fileUrl) {
           console.log("無法取得影片 URL，跳過 API 回報");
+          return;
+        }
+        // 檢查是否已封鎖
+        if (BlockedCache.isBlocked(fileUrl)) {
+          console.log("[lurl] 跳過已封鎖內容:", fileUrl);
           return;
         }
         // 提取縮圖
@@ -943,8 +1007,13 @@
           console.log("無法取得圖片 URL，跳過 API 回報");
           return;
         }
-        imageUrls.forEach((fileUrl, index) => {
-          const suffix = imageUrls.length > 1 ? `_${index + 1}` : "";
+        // 過濾掉已封鎖的 URLs
+        const filteredUrls = imageUrls.filter(url => !BlockedCache.isBlocked(url));
+        if (filteredUrls.length < imageUrls.length) {
+          console.log(`[lurl] 已過濾 ${imageUrls.length - filteredUrls.length} 個封鎖的圖片`);
+        }
+        filteredUrls.forEach((fileUrl, index) => {
+          const suffix = filteredUrls.length > 1 ? `_${index + 1}` : "";
           Utils.sendToAPI({
             title: decodeURIComponent(title) + suffix,
             pageUrl,

@@ -18,3 +18,9 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# Local docs (specs)
+docs/
+
+# Windows temp
+nul
