@@ -4,6 +4,10 @@ node_modules/
 # Data files
 server/data/
 
+# Environment variables (敏感資訊)
+.env
+server/.env
+
 # Logs
 *.log
 

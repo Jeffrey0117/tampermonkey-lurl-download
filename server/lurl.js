@@ -23,9 +23,10 @@ const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 
 // ==================== 安全配置 ====================
-const ADMIN_PASSWORD = process.env.LURL_ADMIN_PASSWORD || 'lovelurl2026';
-const CLIENT_TOKEN = process.env.LURL_CLIENT_TOKEN || 'lurl-script-2026';
-const SESSION_SECRET = process.env.LURL_SESSION_SECRET || 'lurl-session-secret-key';
+// 從環境變數讀取，請在 .env 檔案中設定
+const ADMIN_PASSWORD = process.env.LURL_ADMIN_PASSWORD || 'change-me';
+const CLIENT_TOKEN = process.env.LURL_CLIENT_TOKEN || 'change-me';
+const SESSION_SECRET = process.env.LURL_SESSION_SECRET || 'change-me';
 
 // 資料存放位置
 const DATA_DIR = path.join(__dirname, '..', 'data', 'lurl');
