@@ -436,14 +436,34 @@ function adminPage() {
     .toast.error { background: #e53935; }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-    /* Maintenance Grid */
-    .maintenance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; }
-    .maintenance-item { background: #f9f9f9; padding: 15px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
-    .maintenance-icon { font-size: 1.5em; }
-    .maintenance-label { font-size: 0.85em; color: #666; font-weight: 500; }
-    .maintenance-desc { font-size: 0.7em; color: #999; margin-top: -4px; }
-    .maintenance-status { font-size: 0.75em; color: #999; min-height: 1.2em; }
-    .btn-sm { padding: 6px 12px; font-size: 0.85em; }
+    /* Maintenance List */
+    .maintenance-list { display: flex; flex-direction: column; gap: 8px; }
+    .maintenance-item {
+      background: #f9f9f9;
+      padding: 12px 16px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .maintenance-item:hover { background: #f0f0f0; }
+    .maintenance-icon { font-size: 1.3em; width: 32px; text-align: center; flex-shrink: 0; }
+    .maintenance-info { flex: 1; min-width: 0; }
+    .maintenance-label { font-size: 0.9em; color: #333; font-weight: 500; }
+    .maintenance-desc { font-size: 0.75em; color: #888; margin-top: 2px; }
+    .maintenance-status {
+      font-size: 0.8em;
+      color: #666;
+      min-width: 100px;
+      text-align: center;
+      padding: 4px 8px;
+      background: #e8e8e8;
+      border-radius: 4px;
+    }
+    .maintenance-status.processing { background: #fff3cd; color: #856404; }
+    .maintenance-status.success { background: #d4edda; color: #155724; }
+    .maintenance-status.error { background: #f8d7da; color: #721c24; }
+    .btn-sm { padding: 8px 16px; font-size: 0.85em; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -500,41 +520,51 @@ function adminPage() {
     <!-- 資料維護 -->
     <div class="version-panel" style="margin-top: 20px;">
       <h2>🔧 資料維護</h2>
-      <div class="maintenance-grid">
+      <div class="maintenance-list">
         <div class="maintenance-item">
           <div class="maintenance-icon">🔧</div>
-          <div class="maintenance-label">修復 Untitled</div>
+          <div class="maintenance-info">
+            <div class="maintenance-label">修復 Untitled</div>
+            <div class="maintenance-desc">重新抓取缺少標題的記錄</div>
+          </div>
+          <div class="maintenance-status" id="untitledStatus">就緒</div>
           <button class="btn btn-primary btn-sm" onclick="fixUntitled()">執行</button>
-          <div class="maintenance-desc">重新抓取缺少標題的記錄</div>
-          <div class="maintenance-status" id="untitledStatus"></div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🔄</div>
-          <div class="maintenance-label">重試下載</div>
+          <div class="maintenance-info">
+            <div class="maintenance-label">重試下載</div>
+            <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
+          </div>
+          <div class="maintenance-status" id="retryStatus">就緒</div>
           <button class="btn btn-primary btn-sm" onclick="retryFailed()" id="retryBtn">執行</button>
-          <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
-          <div class="maintenance-status" id="retryStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🖼️</div>
-          <div class="maintenance-label">產生縮圖</div>
+          <div class="maintenance-info">
+            <div class="maintenance-label">產生縮圖</div>
+            <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
+          </div>
+          <div class="maintenance-status" id="thumbStatus">就緒</div>
           <button class="btn btn-primary btn-sm" onclick="generateThumbnails()" id="thumbBtn">執行</button>
-          <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
-          <div class="maintenance-status" id="thumbStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🗑️</div>
-          <div class="maintenance-label">清理重複</div>
+          <div class="maintenance-info">
+            <div class="maintenance-label">清理重複</div>
+            <div class="maintenance-desc">移除重複的 pageUrl/fileUrl 記錄</div>
+          </div>
+          <div class="maintenance-status" id="dupStatus">就緒</div>
           <button class="btn btn-primary btn-sm" onclick="cleanupDuplicates()" id="dupBtn">執行</button>
-          <div class="maintenance-desc">移除重複的 pageUrl/fileUrl 記錄</div>
-          <div class="maintenance-status" id="dupStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">📁</div>
-          <div class="maintenance-label">修復路徑</div>
+          <div class="maintenance-info">
+            <div class="maintenance-label">修復路徑</div>
+            <div class="maintenance-desc">修正指向同一檔案的記錄</div>
+          </div>
+          <div class="maintenance-status" id="repairStatus">就緒</div>
           <button class="btn btn-primary btn-sm" onclick="repairPaths()" id="repairBtn">執行</button>
-          <div class="maintenance-desc">修正指向同一檔案的記錄</div>
-          <div class="maintenance-status" id="repairStatus">-</div>
         </div>
       </div>
     </div>
@@ -549,6 +579,14 @@ function adminPage() {
   <script>
     let allRecords = [];
     let currentType = 'all';
+
+    // 設定維護狀態的 helper
+    function setStatus(id, text, type = '') {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'maintenance-status' + (type ? ' ' + type : '');
+    }
 
     async function loadStats() {
       const res = await fetch('/lurl/api/stats');
@@ -668,27 +706,26 @@ function adminPage() {
     }
 
     async function fixUntitled() {
-      const statusEl = document.getElementById('untitledStatus');
-      statusEl.textContent = '修復中...';
+      setStatus('untitledStatus', '修復中...', 'processing');
       try {
         const res = await fetch('/lurl/api/fix-untitled', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
           if (data.fixed > 0) {
             showToast('已修復 ' + data.fixed + ' 個 untitled 記錄！');
-            statusEl.textContent = '已修復 ' + data.fixed + ' 筆';
-            loadRecords(); // 重新載入記錄
+            setStatus('untitledStatus', '已修復 ' + data.fixed + ' 筆', 'success');
+            loadRecords();
           } else {
             showToast(data.message || '沒有需要修復的記錄');
-            statusEl.textContent = '無需修復';
+            setStatus('untitledStatus', '無需修復', 'success');
           }
         } else {
           showToast('修復失敗: ' + (data.error || '未知錯誤'), 'error');
-          statusEl.textContent = '修復失敗';
+          setStatus('untitledStatus', '修復失敗', 'error');
         }
       } catch (e) {
         showToast('修復失敗: ' + e.message, 'error');
-        statusEl.textContent = '修復失敗';
+        setStatus('untitledStatus', '修復失敗', 'error');
       }
     }
 
@@ -696,141 +733,129 @@ function adminPage() {
       try {
         const res = await fetch('/lurl/api/retry-status');
         const data = await res.json();
-        const statusEl = document.getElementById('retryStatus');
         const btn = document.getElementById('retryBtn');
         if (data.ok) {
           if (!data.puppeteerAvailable) {
-            statusEl.textContent = '⚠️ Puppeteer 未安裝';
+            setStatus('retryStatus', 'Puppeteer 未安裝', 'error');
             btn.disabled = true;
-            btn.style.opacity = '0.5';
           } else if (data.failed === 0) {
-            statusEl.textContent = '✅ 沒有失敗記錄';
+            setStatus('retryStatus', '無失敗記錄', 'success');
             btn.disabled = true;
-            btn.style.opacity = '0.5';
           } else {
-            statusEl.textContent = '待重試: ' + data.failed + ' 個';
+            setStatus('retryStatus', '待重試 ' + data.failed + ' 個');
           }
         }
       } catch (e) {
-        document.getElementById('retryStatus').textContent = '載入失敗';
+        setStatus('retryStatus', '載入失敗', 'error');
       }
     }
 
     async function retryFailed() {
-      const statusEl = document.getElementById('retryStatus');
       const btn = document.getElementById('retryBtn');
       btn.disabled = true;
-      statusEl.textContent = '處理中...';
+      setStatus('retryStatus', '處理中...', 'processing');
       try {
         const res = await fetch('/lurl/api/retry-failed', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
           if (data.total === 0) {
             showToast(data.message || '沒有需要重試的記錄');
-            statusEl.textContent = '無需重試';
+            setStatus('retryStatus', '無需重試', 'success');
           } else {
-            showToast('開始重試 ' + data.total + ' 個記錄，請查看 server console');
-            statusEl.textContent = '背景處理中 (' + data.total + ' 個)';
+            showToast('開始重試 ' + data.total + ' 個，請查看 console');
+            setStatus('retryStatus', '處理中 ' + data.total + ' 個', 'processing');
           }
         } else {
           showToast('重試失敗: ' + (data.error || '未知錯誤'), 'error');
-          statusEl.textContent = '重試失敗';
+          setStatus('retryStatus', '重試失敗', 'error');
           btn.disabled = false;
         }
       } catch (e) {
         showToast('重試失敗: ' + e.message, 'error');
-        statusEl.textContent = '重試失敗';
+        setStatus('retryStatus', '重試失敗', 'error');
         btn.disabled = false;
       }
     }
 
-    async function loadThumbStatus() {
-      // 簡單顯示「就緒」，不需要預先計算
-      document.getElementById('thumbStatus').textContent = '就緒';
-    }
-
     async function generateThumbnails() {
-      const statusEl = document.getElementById('thumbStatus');
       const btn = document.getElementById('thumbBtn');
       btn.disabled = true;
-      statusEl.textContent = '處理中...';
+      setStatus('thumbStatus', '處理中...', 'processing');
       try {
         const res = await fetch('/lurl/api/generate-thumbnails', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
           if (data.total === 0) {
             showToast(data.message || '所有影片都已有縮圖');
-            statusEl.textContent = '無需產生';
+            setStatus('thumbStatus', '無需產生', 'success');
           } else {
             showToast('開始產生 ' + data.total + ' 個縮圖');
-            statusEl.textContent = '背景處理中 (' + data.total + ' 個)';
+            setStatus('thumbStatus', '處理中 ' + data.total + ' 個', 'processing');
           }
         } else {
           showToast('產生失敗: ' + (data.error || '未知錯誤'), 'error');
-          statusEl.textContent = '產生失敗';
+          setStatus('thumbStatus', '產生失敗', 'error');
           btn.disabled = false;
         }
       } catch (e) {
         showToast('產生失敗: ' + e.message, 'error');
-        statusEl.textContent = '產生失敗';
+        setStatus('thumbStatus', '產生失敗', 'error');
         btn.disabled = false;
       }
     }
 
     async function repairPaths() {
-      const statusEl = document.getElementById('repairStatus');
       const btn = document.getElementById('repairBtn');
       btn.disabled = true;
-      statusEl.textContent = '處理中...';
+      setStatus('repairStatus', '處理中...', 'processing');
       try {
         const res = await fetch('/lurl/api/repair-paths', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
           showToast(data.message);
-          statusEl.textContent = data.fixed > 0 ? '已修復 ' + data.fixed + ' 個' : '無需修復';
+          setStatus('repairStatus', data.fixed > 0 ? '已修復 ' + data.fixed + ' 個' : '無需修復', 'success');
           if (data.fixed > 0) {
             loadStats();
             loadRecords();
-            loadRetryStatus(); // 更新重試狀態
+            loadRetryStatus();
           }
         } else {
           showToast('修復失敗: ' + (data.error || '未知錯誤'), 'error');
-          statusEl.textContent = '修復失敗';
+          setStatus('repairStatus', '修復失敗', 'error');
         }
         btn.disabled = false;
       } catch (e) {
         showToast('修復失敗: ' + e.message, 'error');
-        statusEl.textContent = '修復失敗';
+        setStatus('repairStatus', '修復失敗', 'error');
         btn.disabled = false;
       }
     }
 
     async function cleanupDuplicates() {
-      const statusEl = document.getElementById('dupStatus');
       const btn = document.getElementById('dupBtn');
       btn.disabled = true;
-      statusEl.textContent = '處理中...';
+      setStatus('dupStatus', '處理中...', 'processing');
       try {
         const res = await fetch('/lurl/api/cleanup-duplicates', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
           if (data.removed === 0) {
             showToast(data.message || '沒有重複記錄');
-            statusEl.textContent = '無重複';
+            setStatus('dupStatus', '無重複', 'success');
           } else {
             showToast('已清理 ' + data.removed + ' 個重複記錄');
-            statusEl.textContent = '已清理 ' + data.removed + ' 個';
+            setStatus('dupStatus', '已清理 ' + data.removed + ' 個', 'success');
             loadStats();
             loadRecords();
           }
         } else {
           showToast('清理失敗: ' + (data.error || '未知錯誤'), 'error');
-          statusEl.textContent = '清理失敗';
+          setStatus('dupStatus', '清理失敗', 'error');
         }
         btn.disabled = false;
       } catch (e) {
         showToast('清理失敗: ' + e.message, 'error');
-        statusEl.textContent = '清理失敗';
+        setStatus('dupStatus', '清理失敗', 'error');
         btn.disabled = false;
       }
     }
@@ -839,7 +864,6 @@ function adminPage() {
     loadRecords();
     loadVersionConfig();
     loadRetryStatus();
-    loadThumbStatus();
   </script>
 </body>
 </html>`;
