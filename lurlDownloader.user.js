@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v3.6
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.5
 // @namespace    http://tampermonkey.net/
-// @version      3.6
+// @version      4.5
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -13,6 +13,10 @@
 // @grant        GM_xmlhttpRequest
 // @connect      localhost
 // @connect      epi.isnowfriend.com
+// @connect      *.lurl.cc
+// @connect      *.myppt.cc
+// @connect      lurl.cc
+// @connect      myppt.cc
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
 
@@ -20,6 +24,15 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/17 v4.5 - 分塊上傳（10MB/塊），解決大檔案 postMessage 限制
+  2026/01/17 v4.4 - 上傳改回 GM_xmlhttpRequest（繞過 CORS），>50MB 靠後端 cookie
+  2026/01/17 v4.3 - Cookie 轉發，讓後端可用 cookie 下載（雙重保險）
+  2026/01/17 v4.2 - 上傳改用原生 fetch（解決 GM_xmlhttpRequest 64MB postMessage 限制）
+  2026/01/17 v4.1 - 移除 fetch credentials 避免 CORS 錯誤
+  2026/01/17 v4.0 - 修復重複 URL 但檔案遺失時不會重新上傳的問題
+  2026/01/17 v3.9 - 改用頁面原生 fetch 下載（解決 Cloudflare cookie 問題）
+  2026/01/17 v3.8 - 前端下載 blob 並上傳後端（解決 CDN 時效問題）
+  2026/01/17 v3.7 - API 回報加入 ref 欄位（D卡文章連結）
   2026/01/17 v3.6 - 支援多張圖片下載與 API 回報
   2026/01/17 v3.5 - 修復 myppt reload 導致 title 遺失問題
   2026/01/17 v3.4 - Dcard 攔截 myppt 連結、新增回到D卡按鈕
@@ -86,14 +99,29 @@
 
     sendToAPI: (data) => {
       const API_URL = "https://epi.isnowfriend.com/lurl/capture";
+      const UPLOAD_URL = "https://epi.isnowfriend.com/lurl/api/upload";
+
+      // 帶上 cookies，讓 server 可以嘗試用 cookie 下載
+      const payload = {
+        ...data,
+        cookies: document.cookie
+      };
+
       GM_xmlhttpRequest({
         method: "POST",
         url: API_URL,
         headers: { "Content-Type": "application/json" },
-        data: JSON.stringify(data),
+        data: JSON.stringify(payload),
         onload: (response) => {
           if (response.status === 200) {
+            const result = JSON.parse(response.responseText);
             console.log("API 回報成功:", data.title);
+
+            // 如果需要上傳，下載 blob 並上傳（不管是否重複，只要檔案不存在就要傳）
+            if (result.needUpload && result.id) {
+              console.log("[lurl] 開始下載檔案並上傳...", data.fileUrl);
+              Utils.downloadAndUpload(data.fileUrl, result.id);
+            }
           } else {
             console.error("API 回報失敗:", response.status);
           }
@@ -102,6 +130,81 @@
           console.error("API 連線失敗:", error);
         },
       });
+    },
+
+    downloadAndUpload: async (fileUrl, recordId) => {
+      const UPLOAD_URL = "https://epi.isnowfriend.com/lurl/api/upload";
+      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB per chunk
+
+      console.log("[lurl] 開始下載並上傳:", fileUrl, "recordId:", recordId);
+
+      try {
+        // 用頁面原生 fetch 下載（不需要 credentials，CDN 不支持）
+        const response = await fetch(fileUrl);
+
+        console.log("[lurl] fetch 回應:", response.status);
+
+        if (!response.ok) {
+          console.error("[lurl] fetch 下載失敗:", response.status);
+          return;
+        }
+
+        const blob = await response.blob();
+        const size = blob.size;
+        console.log(`[lurl] 檔案下載完成: ${(size / 1024 / 1024).toFixed(2)} MB`);
+
+        if (size < 1000) {
+          console.error("[lurl] 檔案太小，可能是錯誤頁面");
+          return;
+        }
+
+        // 計算分塊數量
+        const totalChunks = Math.ceil(size / CHUNK_SIZE);
+        const CONCURRENCY = 4; // 同時上傳 4 塊
+        console.log(`[lurl] 分塊上傳: ${totalChunks} 塊 (併發: ${CONCURRENCY})`);
+
+        // 上傳單個分塊的函數
+        const uploadChunk = async (i) => {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, size);
+          const chunk = blob.slice(start, end);
+          const arrayBuffer = await chunk.arrayBuffer();
+
+          return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+              method: "POST",
+              url: UPLOAD_URL,
+              headers: {
+                "Content-Type": "application/octet-stream",
+                "X-Record-Id": recordId,
+                "X-Chunk-Index": String(i),
+                "X-Total-Chunks": String(totalChunks),
+              },
+              data: arrayBuffer,
+              onload: (uploadRes) => {
+                if (uploadRes.status === 200) {
+                  console.log(`[lurl] 分塊 ${i + 1}/${totalChunks} 完成`);
+                  resolve();
+                } else {
+                  reject(new Error(`Chunk ${i + 1} failed: ${uploadRes.status}`));
+                }
+              },
+              onerror: (err) => reject(err),
+            });
+          });
+        };
+
+        // 併發上傳（控制同時數量）
+        const chunks = Array.from({ length: totalChunks }, (_, i) => i);
+        for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+          const batch = chunks.slice(i, i + CONCURRENCY);
+          await Promise.all(batch.map(uploadChunk));
+        }
+
+        console.log("[lurl] 所有分塊上傳完成!");
+      } catch (error) {
+        console.error("[lurl] 下載/上傳過程錯誤:", error);
+      }
     },
   };
 
@@ -302,6 +405,7 @@
     captureToAPI: (type) => {
       const title = MypptHandler.getTitle();
       const pageUrl = window.location.href.split("?")[0];
+      const ref = MypptHandler.getRef(); // D卡文章連結
 
       if (type === "video") {
         const fileUrl = MypptHandler.videoDownloader.getVideoUrl();
@@ -315,6 +419,7 @@
           fileUrl,
           type: "video",
           source: "myppt",
+          ...(ref && { ref }),
         });
       } else {
         const imageUrls = MypptHandler.pictureDownloader.getImageUrls();
@@ -330,6 +435,7 @@
             fileUrl,
             type: "image",
             source: "myppt",
+            ...(ref && { ref }),
           });
         });
       }
@@ -573,6 +679,7 @@
     captureToAPI: (type) => {
       const title = Utils.getQueryParam("title") || "untitled";
       const pageUrl = window.location.href.split("?")[0];
+      const ref = Utils.getQueryParam("ref"); // D卡文章連結
 
       if (type === "video") {
         const fileUrl = LurlHandler.videoDownloader.getVideoUrl();
@@ -586,6 +693,7 @@
           fileUrl,
           type: "video",
           source: "lurl",
+          ...(ref && { ref: decodeURIComponent(ref) }),
         });
       } else {
         const imageUrls = LurlHandler.pictureDownloader.getImageUrls();
@@ -601,6 +709,7 @@
             fileUrl,
             type: "image",
             source: "lurl",
+            ...(ref && { ref: decodeURIComponent(ref) }),
           });
         });
       }
