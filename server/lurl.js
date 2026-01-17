@@ -40,9 +40,13 @@ const SESSION_SECRET = process.env.LURL_SESSION_SECRET || 'change-me';
 // 資料存放位置
 const DATA_DIR = path.join(__dirname, '..', 'data', 'lurl');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.jsonl');
+const QUOTAS_FILE = path.join(DATA_DIR, 'quotas.jsonl');
 const VIDEOS_DIR = path.join(DATA_DIR, 'videos');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
+
+// 修復服務設定
+const FREE_QUOTA = 3;
 
 // ==================== 安全函數 ====================
 
@@ -273,6 +277,73 @@ function readAllRecords() {
   }).filter(Boolean);
 }
 
+// ==================== 額度管理 ====================
+
+function readAllQuotas() {
+  ensureDirs();
+  if (!fs.existsSync(QUOTAS_FILE)) return [];
+  const content = fs.readFileSync(QUOTAS_FILE, 'utf8');
+  return content.trim().split('\n').filter(Boolean).map(line => {
+    try { return JSON.parse(line); }
+    catch { return null; }
+  }).filter(Boolean);
+}
+
+function getVisitorQuota(visitorId) {
+  const quotas = readAllQuotas();
+  let quota = quotas.find(q => q.visitorId === visitorId);
+  if (!quota) {
+    quota = {
+      visitorId,
+      usedCount: 0,
+      freeQuota: FREE_QUOTA,
+      paidQuota: 0,
+      history: []
+    };
+  }
+  return quota;
+}
+
+function useQuota(visitorId, pageUrl, urlId, backupUrl) {
+  const quotas = readAllQuotas();
+  let quotaIndex = quotas.findIndex(q => q.visitorId === visitorId);
+
+  const historyEntry = {
+    pageUrl,
+    urlId,
+    backupUrl,
+    usedAt: new Date().toISOString()
+  };
+
+  if (quotaIndex === -1) {
+    quotas.push({
+      visitorId,
+      usedCount: 1,
+      freeQuota: FREE_QUOTA,
+      paidQuota: 0,
+      lastUsed: new Date().toISOString(),
+      history: [historyEntry]
+    });
+  } else {
+    quotas[quotaIndex].usedCount++;
+    quotas[quotaIndex].lastUsed = new Date().toISOString();
+    quotas[quotaIndex].history.push(historyEntry);
+  }
+
+  fs.writeFileSync(QUOTAS_FILE, quotas.map(q => JSON.stringify(q)).join('\n') + '\n', 'utf8');
+  return getVisitorQuota(visitorId);
+}
+
+// 檢查是否已修復過此 URL
+function hasRecovered(visitorId, urlId) {
+  const quota = getVisitorQuota(visitorId);
+  return quota.history.find(h => h.urlId === urlId);
+}
+
+function getRemainingQuota(quota) {
+  return (quota.freeQuota - quota.usedCount) + quota.paidQuota;
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -370,6 +441,7 @@ function adminPage() {
     .maintenance-item { background: #f9f9f9; padding: 15px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
     .maintenance-icon { font-size: 1.5em; }
     .maintenance-label { font-size: 0.85em; color: #666; font-weight: 500; }
+    .maintenance-desc { font-size: 0.7em; color: #999; margin-top: -4px; }
     .maintenance-status { font-size: 0.75em; color: #999; min-height: 1.2em; }
     .btn-sm { padding: 6px 12px; font-size: 0.85em; }
   </style>
@@ -432,30 +504,35 @@ function adminPage() {
         <div class="maintenance-item">
           <div class="maintenance-icon">🔧</div>
           <div class="maintenance-label">修復 Untitled</div>
+          <div class="maintenance-desc">重新抓取缺少標題的記錄</div>
           <button class="btn btn-primary btn-sm" onclick="fixUntitled()">執行</button>
           <div class="maintenance-status" id="untitledStatus"></div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🔄</div>
           <div class="maintenance-label">重試下載</div>
+          <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
           <button class="btn btn-primary btn-sm" onclick="retryFailed()" id="retryBtn">執行</button>
           <div class="maintenance-status" id="retryStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🖼️</div>
           <div class="maintenance-label">產生縮圖</div>
+          <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
           <button class="btn btn-primary btn-sm" onclick="generateThumbnails()" id="thumbBtn">執行</button>
           <div class="maintenance-status" id="thumbStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🗑️</div>
           <div class="maintenance-label">清理重複</div>
+          <div class="maintenance-desc">移除重複的 pageUrl/fileUrl 記錄</div>
           <button class="btn btn-primary btn-sm" onclick="cleanupDuplicates()" id="dupBtn">執行</button>
           <div class="maintenance-status" id="dupStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">📁</div>
           <div class="maintenance-label">修復路徑</div>
+          <div class="maintenance-desc">修正指向同一檔案的記錄</div>
           <button class="btn btn-primary btn-sm" onclick="repairPaths()" id="repairBtn">執行</button>
           <div class="maintenance-status" id="repairStatus">-</div>
         </div>
@@ -2271,6 +2348,185 @@ module.exports = {
         urls: blockedUrls,
         count: blockedUrls.length,
         updatedAt: new Date().toISOString()
+      }));
+      return;
+    }
+
+    // ==================== 修復服務 API ====================
+
+    // GET /api/check-backup - 檢查是否有備份（公開，用 visitorId）
+    if (req.method === 'GET' && urlPath === '/api/check-backup') {
+      const pageUrl = query.url;
+      const visitorId = req.headers['x-visitor-id'];
+
+      if (!pageUrl) {
+        res.writeHead(400, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Missing url parameter' }));
+        return;
+      }
+
+      // 從 URL 提取 ID（尾部），例如 https://lurl.cc/B0Fe7 → B0Fe7
+      const urlId = pageUrl.split('/').pop().split('?')[0].toLowerCase();
+
+      const records = readAllRecords();
+
+      // 用 ID 匹配（大小寫不敏感），而非完整 URL
+      const record = records.find(r => {
+        if (r.blocked) return false;
+        const recordId = r.pageUrl.split('/').pop().split('?')[0].toLowerCase();
+        return recordId === urlId;
+      });
+
+      if (!record) {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ hasBackup: false }));
+        return;
+      }
+
+      // 檢查本地檔案是否存在
+      const localFilePath = path.join(DATA_DIR, record.backupPath);
+      const fileExists = fs.existsSync(localFilePath);
+
+      if (!fileExists) {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ hasBackup: false }));
+        return;
+      }
+
+      const backupUrl = `/lurl/files/${record.backupPath}`;
+
+      // 檢查是否已修復過（不扣點直接給 URL）
+      if (visitorId) {
+        const recoveredEntry = hasRecovered(visitorId, urlId);
+        if (recoveredEntry) {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({
+            hasBackup: true,
+            alreadyRecovered: true,
+            backupUrl,
+            record: {
+              id: record.id,
+              title: record.title,
+              type: record.type
+            }
+          }));
+          return;
+        }
+      }
+
+      // 取得額度資訊
+      const quota = visitorId ? getVisitorQuota(visitorId) : { usedCount: 0, freeQuota: FREE_QUOTA, paidQuota: 0 };
+      const remaining = getRemainingQuota(quota);
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        hasBackup: true,
+        alreadyRecovered: false,
+        record: {
+          id: record.id,
+          title: record.title,
+          type: record.type
+        },
+        quota: {
+          remaining,
+          total: quota.freeQuota + quota.paidQuota
+        }
+      }));
+      return;
+    }
+
+    // POST /api/recover - 執行修復（消耗額度，冪等性：已修復過不重複扣點）
+    if (req.method === 'POST' && urlPath === '/api/recover') {
+      const visitorId = req.headers['x-visitor-id'];
+      const body = await parseBody(req);
+      const pageUrl = body.pageUrl;
+
+      if (!visitorId) {
+        res.writeHead(400, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Missing X-Visitor-Id header' }));
+        return;
+      }
+
+      if (!pageUrl) {
+        res.writeHead(400, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Missing pageUrl' }));
+        return;
+      }
+
+      // 找備份（用 ID 匹配，大小寫不敏感）
+      const urlId = pageUrl.split('/').pop().split('?')[0].toLowerCase();
+      const records = readAllRecords();
+      const record = records.find(r => {
+        if (r.blocked) return false;
+        const recordId = r.pageUrl.split('/').pop().split('?')[0].toLowerCase();
+        return recordId === urlId;
+      });
+
+      if (!record) {
+        res.writeHead(404, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'No backup found' }));
+        return;
+      }
+
+      const localFilePath = path.join(DATA_DIR, record.backupPath);
+      if (!fs.existsSync(localFilePath)) {
+        res.writeHead(404, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Backup file not found' }));
+        return;
+      }
+
+      const backupUrl = `/lurl/files/${record.backupPath}`;
+
+      // 冪等性：檢查是否已修復過
+      const recoveredEntry = hasRecovered(visitorId, urlId);
+      if (recoveredEntry) {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          alreadyRecovered: true,
+          backupUrl,
+          record: {
+            id: record.id,
+            title: record.title,
+            type: record.type
+          }
+        }));
+        return;
+      }
+
+      // 檢查額度
+      const quota = getVisitorQuota(visitorId);
+      const remaining = getRemainingQuota(quota);
+
+      if (remaining <= 0) {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: false,
+          error: 'quota_exhausted',
+          message: '免費額度已用完'
+        }));
+        return;
+      }
+
+      // 扣額度（帶入 urlId 和 backupUrl）
+      const newQuota = useQuota(visitorId, pageUrl, urlId, backupUrl);
+      const newRemaining = getRemainingQuota(newQuota);
+
+      console.log(`[lurl] 修復服務: ${record.title} (visitor: ${visitorId.substring(0, 8)}..., 剩餘: ${newRemaining})`);
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        backupUrl: `/lurl/files/${record.backupPath}`,
+        record: {
+          id: record.id,
+          title: record.title,
+          type: record.type
+        },
+        quota: {
+          remaining: newRemaining,
+          total: newQuota.freeQuota + newQuota.paidQuota
+        }
       }));
       return;
     }

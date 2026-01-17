@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.8
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.9
 // @namespace    http://tampermonkey.net/
-// @version      4.8
+// @version      4.9
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -50,7 +50,7 @@
   "use strict";
 
   // 腳本版本（用於版本檢查）
-  const SCRIPT_VERSION = '4.8';
+  const SCRIPT_VERSION = '4.9';
 
   // API 驗證 Token
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -548,6 +548,349 @@
     }
   };
 
+  // ==================== LurlHub 修復服務 ====================
+  const RecoveryService = {
+    // 取得或建立訪客 ID
+    getVisitorId: () => {
+      let id = localStorage.getItem('lurlhub_visitor_id');
+      if (!id) {
+        id = 'v_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('lurlhub_visitor_id', id);
+      }
+      return id;
+    },
+
+    // 檢測頁面是否過期（h1 包含「該連結已過期」）
+    isPageExpired: () => {
+      const h1 = document.querySelector('h1');
+      return h1 && h1.textContent.includes('該連結已過期');
+    },
+
+    // 主動檢查過期並顯示修復彈窗
+    checkAndRecover: async () => {
+      if (!RecoveryService.isPageExpired()) return false;
+
+      console.log('[LurlHub] 偵測到頁面已過期，檢查備份...');
+      const pageUrl = window.location.href.split('?')[0];
+      const backup = await RecoveryService.checkBackup(pageUrl);
+
+      if (!backup.hasBackup) {
+        console.log('[LurlHub] 無備份可用');
+        Utils.showToast('😢 此資源無法修復（無備份）', 'warning');
+        return true;
+      }
+
+      // 已修復過 → 直接顯示，不彈窗、不扣點
+      if (backup.alreadyRecovered) {
+        console.log('[LurlHub] 已修復過，直接顯示備份');
+        RecoveryService.replaceResource(backup.backupUrl, backup.record.type);
+        Utils.showToast('✅ 已自動載入備份', 'success');
+        return true;
+      }
+
+      // 未修復過 → 顯示彈窗
+      console.log('[LurlHub] 有備份可用，顯示修復彈窗');
+      RecoveryService.showModal(backup.quota, async () => {
+        try {
+          const result = await RecoveryService.recover(pageUrl);
+          RecoveryService.replaceResource(result.backupUrl, result.record.type);
+          if (result.alreadyRecovered) {
+            Utils.showToast('✅ 已自動載入備份', 'success');
+          } else {
+            Utils.showToast(`✅ 修復成功！剩餘額度: ${result.quota.remaining}`, 'success');
+          }
+        } catch (err) {
+          if (err.error === 'quota_exhausted') {
+            Utils.showToast('❌ 額度已用完', 'error');
+          } else {
+            Utils.showToast('❌ 修復失敗', 'error');
+          }
+        }
+      });
+      return true;
+    },
+
+    // 檢查是否有備份
+    checkBackup: (pageUrl) => {
+      return new Promise((resolve) => {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: `${API_BASE}/api/check-backup?url=${encodeURIComponent(pageUrl)}`,
+          headers: { 'X-Visitor-Id': RecoveryService.getVisitorId() },
+          onload: (response) => {
+            try {
+              const data = JSON.parse(response.responseText);
+              resolve(data);
+            } catch (e) {
+              resolve({ hasBackup: false });
+            }
+          },
+          onerror: () => resolve({ hasBackup: false })
+        });
+      });
+    },
+
+    // 執行修復
+    recover: (pageUrl) => {
+      return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'POST',
+          url: `${API_BASE}/api/recover`,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Visitor-Id': RecoveryService.getVisitorId()
+          },
+          data: JSON.stringify({ pageUrl }),
+          onload: (response) => {
+            try {
+              const data = JSON.parse(response.responseText);
+              if (data.ok) {
+                resolve(data);
+              } else {
+                reject(data);
+              }
+            } catch (e) {
+              reject({ error: 'parse_error' });
+            }
+          },
+          onerror: () => reject({ error: 'network_error' })
+        });
+      });
+    },
+
+    // 顯示 LurlHub 修復彈窗
+    showModal: (quota, onConfirm, onCancel) => {
+      // 移除舊的彈窗
+      const old = document.getElementById('lurlhub-recovery-modal');
+      if (old) old.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'lurlhub-recovery-modal';
+      modal.innerHTML = `
+        <style>
+          #lurlhub-recovery-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999999;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          }
+          .lurlhub-modal-content {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
+          }
+          .lurlhub-logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 15px;
+            border-radius: 12px;
+          }
+          .lurlhub-brand {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+          }
+          .lurlhub-tagline {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 20px;
+          }
+          .lurlhub-title {
+            font-size: 18px;
+            color: #f59e0b;
+            margin-bottom: 10px;
+          }
+          .lurlhub-desc {
+            font-size: 14px;
+            color: #ccc;
+            margin-bottom: 20px;
+            line-height: 1.6;
+          }
+          .lurlhub-quota {
+            background: rgba(59,130,246,0.2);
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #3b82f6;
+            font-size: 14px;
+          }
+          .lurlhub-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+          }
+          .lurlhub-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          .lurlhub-btn-cancel {
+            background: #333;
+            color: #aaa;
+          }
+          .lurlhub-btn-cancel:hover {
+            background: #444;
+            color: #fff;
+          }
+          .lurlhub-btn-confirm {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: #fff;
+          }
+          .lurlhub-btn-confirm:hover {
+            transform: scale(1.05);
+          }
+          .lurlhub-btn-confirm:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+          }
+        </style>
+        <div class="lurlhub-modal-content">
+          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-logo" onerror="this.style.display='none'">
+          <div class="lurlhub-brand">LurlHub</div>
+          <div class="lurlhub-tagline">連結失效？我們有備份</div>
+          <div class="lurlhub-title">⚠️ 原始資源已過期</div>
+          <div class="lurlhub-desc">
+            好消息！我們有此內容的備份。<br>
+            使用修復服務即可觀看。
+          </div>
+          <div class="lurlhub-quota">
+            剩餘額度：<strong>${quota.remaining}</strong> / ${quota.total} 次
+          </div>
+          <div class="lurlhub-actions">
+            <button class="lurlhub-btn lurlhub-btn-cancel" id="lurlhub-cancel">取消</button>
+            <button class="lurlhub-btn lurlhub-btn-confirm" id="lurlhub-confirm" ${quota.remaining <= 0 ? 'disabled' : ''}>
+              ${quota.remaining > 0 ? '使用修復（-1 額度）' : '額度不足'}
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      document.getElementById('lurlhub-cancel').onclick = () => {
+        modal.remove();
+        if (onCancel) onCancel();
+      };
+
+      document.getElementById('lurlhub-confirm').onclick = () => {
+        if (quota.remaining > 0) {
+          modal.remove();
+          if (onConfirm) onConfirm();
+        }
+      };
+
+      // 點背景不關閉，只有按取消才會關閉
+    },
+
+    // 替換資源（過期頁面復原，支援影片和圖片）
+    replaceResource: (backupUrl, type) => {
+      const fullUrl = backupUrl.startsWith('http') ? backupUrl : API_BASE.replace('/lurl', '') + backupUrl;
+
+      // 1. 移除過期的 h1
+      const h1 = document.querySelector('h1');
+      if (h1 && h1.textContent.includes('該連結已過期')) {
+        h1.remove();
+      }
+
+      // 2. 移除 lottie-player，替換成對應的元素
+      const lottie = document.querySelector('lottie-player');
+      let newElement = null;
+
+      if (lottie) {
+        if (type === 'video') {
+          newElement = document.createElement('video');
+          newElement.src = fullUrl;
+          newElement.controls = true;
+          newElement.autoplay = true;
+          newElement.style.cssText = 'max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;';
+          lottie.replaceWith(newElement);
+          newElement.play().catch(() => {});
+        } else {
+          // 圖片
+          newElement = document.createElement('img');
+          newElement.src = fullUrl;
+          newElement.style.cssText = 'max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;';
+          lottie.replaceWith(newElement);
+        }
+
+        // 3. 在圖片/影片下面加上成功訊息
+        const successH1 = document.createElement('h1');
+        successH1.textContent = '拯救過期資源成功 ✅';
+        successH1.style.cssText = 'text-align: center; color: #28a745; margin: 20px 0;';
+        newElement.insertAdjacentElement('afterend', successH1);
+      }
+    },
+
+    // 監聽影片載入失敗
+    watchVideoError: () => {
+      const video = document.querySelector('video');
+      if (!video) return;
+
+      let errorHandled = false;
+
+      const handleError = async () => {
+        if (errorHandled) return;
+        errorHandled = true;
+
+        console.log('[LurlHub] 偵測到影片載入失敗，檢查備份...');
+        const pageUrl = window.location.href.split('?')[0];
+        const backup = await RecoveryService.checkBackup(pageUrl);
+
+        if (backup.hasBackup) {
+          // 已修復過 → 直接顯示
+          if (backup.alreadyRecovered) {
+            RecoveryService.replaceResource(backup.backupUrl, backup.record.type);
+            Utils.showToast('✅ 已自動載入備份', 'success');
+            return;
+          }
+          // 未修復過 → 顯示彈窗
+          console.log('[LurlHub] 有備份可用，顯示修復彈窗');
+          RecoveryService.showModal(backup.quota, async () => {
+            try {
+              const result = await RecoveryService.recover(pageUrl);
+              RecoveryService.replaceResource(result.backupUrl, result.record.type);
+              Utils.showToast(`✅ 修復成功！剩餘額度: ${result.quota.remaining}`, 'success');
+            } catch (err) {
+              if (err.error === 'quota_exhausted') {
+                Utils.showToast('❌ 額度已用完', 'error');
+              } else {
+                Utils.showToast('❌ 修復失敗', 'error');
+              }
+            }
+          });
+        } else {
+          console.log('[LurlHub] 無備份可用');
+        }
+      };
+
+      video.addEventListener('error', handleError);
+
+      // 也監聽 5 秒後還沒載入的情況
+      setTimeout(() => {
+        if (video.readyState === 0 && video.networkState === 3) {
+          handleError();
+        }
+      }, 5000);
+    }
+  };
+
   const MypptHandler = {
     saveQueryParams: () => {
       const title = Utils.getQueryParam("title");
@@ -740,11 +1083,17 @@
       $(document).ready(() => {
         MypptHandler.autoFillPassword();
       });
-      $(window).on("load", () => {
+      $(window).on("load", async () => {
+        // 先檢查頁面是否過期
+        if (await RecoveryService.checkAndRecover()) {
+          return; // 過期頁面已處理，不執行正常流程
+        }
+
         const contentType = MypptHandler.detectContentType();
         if (contentType === "video") {
           MypptHandler.videoDownloader.inject();
           MypptHandler.captureToAPI("video");
+          RecoveryService.watchVideoError();
         } else {
           MypptHandler.pictureDownloader.inject();
           MypptHandler.captureToAPI("image");
@@ -1028,12 +1377,18 @@
 
     init: () => {
       LurlHandler.passwordCracker.init();
-      $(window).on("load", () => {
+      $(window).on("load", async () => {
+        // 先檢查頁面是否過期
+        if (await RecoveryService.checkAndRecover()) {
+          return; // 過期頁面已處理，不執行正常流程
+        }
+
         const contentType = LurlHandler.detectContentType();
         if (contentType === "video") {
           LurlHandler.videoDownloader.inject();
           LurlHandler.videoDownloader.replacePlayer();
           LurlHandler.captureToAPI("video");
+          RecoveryService.watchVideoError();
         } else {
           LurlHandler.pictureDownloader.inject();
           LurlHandler.captureToAPI("image");
