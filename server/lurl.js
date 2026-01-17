@@ -292,6 +292,29 @@ function adminPage() {
     .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
     .tab { padding: 10px 20px; background: white; border: none; border-radius: 8px; cursor: pointer; }
     .tab.active { background: #2196F3; color: white; }
+
+    /* Version Management */
+    .version-panel { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 30px; }
+    .version-panel h2 { font-size: 1.2em; margin-bottom: 15px; color: #333; display: flex; align-items: center; gap: 8px; }
+    .version-form { display: grid; gap: 15px; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 0.85em; color: #666; font-weight: 500; }
+    .form-group input, .form-group textarea { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95em; }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #2196F3; }
+    .form-group textarea { min-height: 60px; resize: vertical; }
+    .form-group.checkbox { flex-direction: row; align-items: center; gap: 8px; }
+    .form-group.checkbox input { width: auto; }
+    .form-actions { display: flex; gap: 10px; margin-top: 10px; }
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95em; }
+    .btn-primary { background: #2196F3; color: white; }
+    .btn-primary:hover { background: #1976D2; }
+    .btn-danger { background: #e53935; color: white; }
+    .btn-danger:hover { background: #c62828; }
+    .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: white; font-size: 0.9em; z-index: 1000; animation: slideIn 0.3s ease; }
+    .toast.success { background: #4caf50; }
+    .toast.error { background: #e53935; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   </style>
 </head>
 <body>
@@ -308,6 +331,43 @@ function adminPage() {
   </div>
   <div class="container">
     <div class="stats" id="stats"></div>
+
+    <!-- 版本管理 -->
+    <div class="version-panel">
+      <h2>📦 腳本版本管理</h2>
+      <div class="version-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>最新版本 (latestVersion)</label>
+            <input type="text" id="latestVersion" placeholder="例: 4.8">
+          </div>
+          <div class="form-group">
+            <label>最低版本 (minVersion) - 低於此版本強制更新</label>
+            <input type="text" id="minVersion" placeholder="例: 4.0.0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>更新訊息 (message)</label>
+          <input type="text" id="versionMessage" placeholder="例: 新增功能、修復問題等">
+        </div>
+        <div class="form-group">
+          <label>公告 (announcement) - 可選</label>
+          <textarea id="announcement" placeholder="額外公告訊息..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>更新連結 (updateUrl)</label>
+          <input type="text" id="updateUrl" placeholder="GitHub raw URL">
+        </div>
+        <div class="form-group checkbox">
+          <input type="checkbox" id="forceUpdate">
+          <label for="forceUpdate">強制更新 (forceUpdate) - 所有舊版本必須更新</label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="saveVersionConfig()">💾 儲存設定</button>
+        </div>
+      </div>
+    </div>
+
     <div class="tabs">
       <button class="tab active" data-type="all">全部</button>
       <button class="tab" data-type="video">影片</button>
@@ -385,8 +445,60 @@ function adminPage() {
       }
     }
 
+    // Toast 訊息
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + type;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // 版本設定
+    async function loadVersionConfig() {
+      try {
+        const res = await fetch('/lurl/api/version');
+        const config = await res.json();
+        document.getElementById('latestVersion').value = config.latestVersion || '';
+        document.getElementById('minVersion').value = config.minVersion || '';
+        document.getElementById('versionMessage').value = config.message || '';
+        document.getElementById('announcement').value = config.announcement || '';
+        document.getElementById('updateUrl').value = config.updateUrl || '';
+        document.getElementById('forceUpdate').checked = config.forceUpdate || false;
+      } catch (e) {
+        console.error('載入版本設定失敗:', e);
+      }
+    }
+
+    async function saveVersionConfig() {
+      const config = {
+        latestVersion: document.getElementById('latestVersion').value,
+        minVersion: document.getElementById('minVersion').value,
+        message: document.getElementById('versionMessage').value,
+        announcement: document.getElementById('announcement').value,
+        updateUrl: document.getElementById('updateUrl').value,
+        forceUpdate: document.getElementById('forceUpdate').checked
+      };
+      try {
+        const res = await fetch('/lurl/api/version', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('版本設定已儲存！');
+        } else {
+          showToast('儲存失敗: ' + (data.error || '未知錯誤'), 'error');
+        }
+      } catch (e) {
+        showToast('儲存失敗: ' + e.message, 'error');
+      }
+    }
+
     loadStats();
     loadRecords();
+    loadVersionConfig();
   </script>
 </body>
 </html>`;
@@ -870,6 +982,59 @@ module.exports = {
     if (req.method === 'GET' && urlPath === '/health') {
       res.writeHead(200, corsHeaders());
       res.end(JSON.stringify({ status: 'ok', version: 'v3-fixed', timestamp: new Date().toISOString() }));
+      return;
+    }
+
+    // GET /api/version - 腳本版本檢查（公開，不需要驗證）
+    if (req.method === 'GET' && urlPath === '/api/version') {
+      try {
+        const versionFile = path.join(__dirname, 'version.json');
+        const versionConfig = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
+        const clientVersion = query.v || '0.0.0';
+        console.log(`[lurl] 版本檢查: client=${clientVersion}, latest=${versionConfig.latestVersion}`);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify(versionConfig));
+      } catch (err) {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          latestVersion: '0.0.0',
+          minVersion: '0.0.0',
+          message: '',
+          updateUrl: '',
+          forceUpdate: false,
+          announcement: ''
+        }));
+      }
+      return;
+    }
+
+    // POST /api/version - 更新版本設定（需要 Admin 登入）
+    if (req.method === 'POST' && urlPath === '/api/version') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+      try {
+        const body = await parseBody(req);
+        const versionFile = path.join(__dirname, 'version.json');
+        const config = {
+          latestVersion: body.latestVersion || '0.0.0',
+          minVersion: body.minVersion || '0.0.0',
+          message: body.message || '',
+          updateUrl: body.updateUrl || '',
+          forceUpdate: body.forceUpdate || false,
+          announcement: body.announcement || ''
+        };
+        fs.writeFileSync(versionFile, JSON.stringify(config, null, 2));
+        console.log('[lurl] 版本設定已更新:', config.latestVersion);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        console.error('[lurl] 更新版本設定失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
       return;
     }
 

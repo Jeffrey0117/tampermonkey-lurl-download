@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.7
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.8
 // @namespace    http://tampermonkey.net/
-// @version      4.7
+// @version      4.8
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -24,6 +24,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/18 v4.8 - 新增版本檢查機制，可收到更新通知
   2026/01/17 v4.7 - 移除貢獻者追蹤與 VIP 提示（保持低調）
   2026/01/17 v4.5 - 分塊上傳（10MB/塊），解決大檔案 postMessage 限制
   2026/01/17 v4.4 - 上傳改回 GM_xmlhttpRequest（繞過 CORS），>50MB 靠後端 cookie
@@ -48,8 +49,14 @@
 (function ($) {
   "use strict";
 
+  // 腳本版本（用於版本檢查）
+  const SCRIPT_VERSION = '4.8';
+
   // API 驗證 Token
   const CLIENT_TOKEN = 'lurl-script-2026';
+
+  // API 基底 URL
+  const API_BASE = 'https://epi.isnowfriend.com/lurl';
 
   const Utils = {
     extractMMDD: (dateText) => {
@@ -142,7 +149,7 @@
     },
 
     sendToAPI: (data) => {
-      const API_URL = "https://epi.isnowfriend.com/lurl/capture";
+      const API_URL = `${API_BASE}/capture`;
 
       const payload = {
         ...data,
@@ -178,7 +185,7 @@
     },
 
     downloadAndUpload: async (fileUrl, recordId) => {
-      const UPLOAD_URL = "https://epi.isnowfriend.com/lurl/api/upload";
+      const UPLOAD_URL = `${API_BASE}/api/upload`;
       const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB per chunk
 
       console.log("[lurl] 開始下載並上傳:", fileUrl, "recordId:", recordId);
@@ -281,6 +288,188 @@
     init: () => {
       ResourceLoader.loadToastify();
       ResourceLoader.loadCustomStyles();
+    },
+  };
+
+  const VersionChecker = {
+    // 比較版本號（支援 x.y.z 格式）
+    compareVersions: (current, target) => {
+      const currentParts = current.split('.').map(Number);
+      const targetParts = target.split('.').map(Number);
+      const maxLen = Math.max(currentParts.length, targetParts.length);
+
+      for (let i = 0; i < maxLen; i++) {
+        const c = currentParts[i] || 0;
+        const t = targetParts[i] || 0;
+        if (c < t) return -1; // current < target
+        if (c > t) return 1;  // current > target
+      }
+      return 0; // equal
+    },
+
+    // 顯示更新提示
+    showUpdatePrompt: (config) => {
+      const { latestVersion, message, updateUrl, forceUpdate, announcement } = config;
+
+      // 建立提示 UI
+      const $overlay = $('<div>', {
+        id: 'lurl-update-overlay',
+        css: {
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: forceUpdate ? 'rgba(0,0,0,0.8)' : 'transparent',
+          zIndex: forceUpdate ? 99999 : 99998,
+          pointerEvents: forceUpdate ? 'auto' : 'none',
+        }
+      });
+
+      const $dialog = $('<div>', {
+        id: 'lurl-update-dialog',
+        css: {
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          width: '320px',
+          backgroundColor: '#fff',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          padding: '20px',
+          zIndex: 100000,
+          fontFamily: 'sans-serif',
+          pointerEvents: 'auto',
+        }
+      });
+
+      const $title = $('<h3>', {
+        text: forceUpdate ? '⚠️ 必須更新' : '🔄 有新版本',
+        css: {
+          margin: '0 0 12px 0',
+          fontSize: '18px',
+          color: forceUpdate ? '#dc3545' : '#333',
+        }
+      });
+
+      const $version = $('<p>', {
+        html: `目前版本: <strong>v${SCRIPT_VERSION}</strong> → 最新版本: <strong>v${latestVersion}</strong>`,
+        css: { margin: '0 0 10px 0', fontSize: '14px', color: '#666' }
+      });
+
+      const $message = $('<p>', {
+        text: message,
+        css: { margin: '0 0 15px 0', fontSize: '14px', color: '#333' }
+      });
+
+      const $updateBtn = $('<a>', {
+        href: updateUrl,
+        text: '立即更新',
+        target: '_blank',
+        css: {
+          display: 'inline-block',
+          padding: '10px 20px',
+          backgroundColor: '#28a745',
+          color: '#fff',
+          textDecoration: 'none',
+          borderRadius: '6px',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          marginRight: '10px',
+        }
+      });
+
+      $dialog.append($title, $version, $message, $updateBtn);
+
+      // 非強制更新時顯示關閉按鈕
+      if (!forceUpdate) {
+        const $closeBtn = $('<button>', {
+          text: '稍後再說',
+          css: {
+            padding: '10px 20px',
+            backgroundColor: '#6c757d',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '14px',
+            cursor: 'pointer',
+          }
+        });
+        $closeBtn.on('click', () => {
+          $overlay.remove();
+          $dialog.remove();
+          // 記住使用者選擇，24小時內不再提醒
+          sessionStorage.setItem('lurl_skip_update', Date.now());
+        });
+        $dialog.append($closeBtn);
+      }
+
+      // 如果有公告，顯示公告
+      if (announcement) {
+        const $announcement = $('<p>', {
+          text: announcement,
+          css: {
+            margin: '15px 0 0 0',
+            padding: '10px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '6px',
+            fontSize: '13px',
+            color: '#555',
+          }
+        });
+        $dialog.append($announcement);
+      }
+
+      $('body').append($overlay, $dialog);
+    },
+
+    // 檢查版本
+    check: () => {
+      // 如果使用者選擇稍後再說，24小時內不再檢查
+      const skipTime = sessionStorage.getItem('lurl_skip_update');
+      if (skipTime && Date.now() - parseInt(skipTime) < 24 * 60 * 60 * 1000) {
+        console.log('[lurl] 使用者已選擇稍後更新，跳過版本檢查');
+        return;
+      }
+
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: `${API_BASE}/api/version`,
+        headers: { 'X-Client-Token': CLIENT_TOKEN },
+        onload: (response) => {
+          if (response.status !== 200) {
+            console.error('[lurl] 版本檢查失敗:', response.status);
+            return;
+          }
+
+          try {
+            const config = JSON.parse(response.responseText);
+            const { latestVersion, minVersion, forceUpdate } = config;
+
+            console.log(`[lurl] 版本檢查: 目前 v${SCRIPT_VERSION}, 最新 v${latestVersion}, 最低 v${minVersion}`);
+
+            // 檢查是否低於最低版本（強制更新）
+            if (VersionChecker.compareVersions(SCRIPT_VERSION, minVersion) < 0) {
+              console.warn('[lurl] 版本過舊，需要強制更新');
+              VersionChecker.showUpdatePrompt({ ...config, forceUpdate: true });
+              return;
+            }
+
+            // 檢查是否有新版本
+            if (VersionChecker.compareVersions(SCRIPT_VERSION, latestVersion) < 0) {
+              console.log('[lurl] 有新版本可用');
+              VersionChecker.showUpdatePrompt(config);
+            } else {
+              console.log('[lurl] 已是最新版本');
+            }
+          } catch (e) {
+            console.error('[lurl] 版本資訊解析錯誤:', e);
+          }
+        },
+        onerror: (error) => {
+          console.error('[lurl] 版本檢查連線失敗:', error);
+        },
+      });
     },
   };
 
@@ -812,6 +1001,7 @@
   const Main = {
     init: () => {
       ResourceLoader.init();
+      VersionChecker.check();
       Router.dispatch();
     },
   };
