@@ -22,6 +22,15 @@ const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 
+// 備援下載模組 (Puppeteer - 在頁面 context 下載)
+let lurlRetry = null;
+try {
+  lurlRetry = require('./lurl-retry');
+  console.log('[lurl] ✅ Puppeteer 備援模組已載入');
+} catch (e) {
+  console.log('[lurl] ⚠️ Puppeteer 備援模組未載入:', e.message);
+}
+
 // ==================== 安全配置 ====================
 // 從環境變數讀取，請在 .env 檔案中設定
 const ADMIN_PASSWORD = process.env.LURL_ADMIN_PASSWORD || 'change-me';
@@ -70,6 +79,7 @@ function loginPage(error = '') {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl - 登入</title>
   <style>
@@ -124,7 +134,7 @@ function sanitizeFilename(filename) {
     .replace(/[^\w\u4e00-\u9fff\u3400-\u4dbf._-]/g, '')
     .replace(/_+/g, '_') // 多個底線合併
     .replace(/^_|_$/g, '') // 移除開頭結尾底線
-    .substring(0, 200) || 'untitled';
+    .substring(0, 200) || `untitled_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 }
 
 async function downloadFile(url, destPath, pageUrl = '', cookies = '') {
@@ -197,6 +207,34 @@ async function downloadFile(url, destPath, pageUrl = '', cookies = '') {
   return false;
 }
 
+// 用 ffmpeg 產生影片縮圖
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
+
+async function generateVideoThumbnail(videoPath, thumbnailPath) {
+  try {
+    // 確保縮圖目錄存在
+    const dir = path.dirname(thumbnailPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    // ffmpeg 擷取第 1 秒的畫面，縮放到 320px 寬
+    const cmd = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 -vf "scale=320:-1" -y "${thumbnailPath}"`;
+    await execAsync(cmd, { timeout: 30000 });
+
+    if (fs.existsSync(thumbnailPath)) {
+      console.log(`[lurl] ✅ 縮圖產生成功: ${thumbnailPath}`);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.log(`[lurl] ⚠️ 縮圖產生失敗: ${err.message}`);
+    return false;
+  }
+}
+
 function appendRecord(record) {
   ensureDirs();
   fs.appendFileSync(RECORDS_FILE, JSON.stringify(record) + '\n', 'utf8');
@@ -211,6 +249,18 @@ function updateRecordFileUrl(id, newFileUrl) {
     return r;
   });
   fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+}
+
+function updateRecordThumbnail(id, thumbnailPath) {
+  const records = readAllRecords();
+  const updated = records.map(r => {
+    if (r.id === id) {
+      return { ...r, thumbnailPath };
+    }
+    return r;
+  });
+  fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  console.log(`[lurl] 記錄已更新縮圖: ${id}`);
 }
 
 function readAllRecords() {
@@ -258,6 +308,7 @@ function adminPage() {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl Admin</title>
   <style>
@@ -309,8 +360,6 @@ function adminPage() {
     .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95em; }
     .btn-primary { background: #2196F3; color: white; }
     .btn-primary:hover { background: #1976D2; }
-    .btn-danger { background: #e53935; color: white; }
-    .btn-danger:hover { background: #c62828; }
     .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: white; font-size: 0.9em; z-index: 1000; animation: slideIn 0.3s ease; }
     .toast.success { background: #4caf50; }
     .toast.error { background: #e53935; }
@@ -364,6 +413,50 @@ function adminPage() {
         </div>
         <div class="form-actions">
           <button class="btn btn-primary" onclick="saveVersionConfig()">💾 儲存設定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 資料維護 -->
+    <div class="version-panel" style="margin-top: 20px;">
+      <h2>🔧 資料維護</h2>
+      <div class="version-form">
+        <div class="form-group">
+          <label>修復 untitled 記錄 - 將所有 "untitled" 標題改為 "untitled_[ID]"</label>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <button class="btn btn-primary" onclick="fixUntitled()">🔧 修復 Untitled</button>
+            <span id="untitledStatus" style="color: #666;"></span>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
+          <label>重試下載失敗的檔案 - 使用 Puppeteer 瀏覽器重新抓取</label>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <button class="btn btn-primary" onclick="retryFailed()" id="retryBtn">🔄 重試失敗下載</button>
+            <span id="retryStatus" style="color: #666;">載入中...</span>
+          </div>
+          <small style="color: #888; margin-top: 5px; display: block;">※ 處理需要一些時間，請在 console 查看進度</small>
+        </div>
+        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
+          <label>產生影片縮圖 - 使用 ffmpeg 擷取影片第 1 秒畫面</label>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <button class="btn btn-primary" onclick="generateThumbnails()" id="thumbBtn">🖼️ 產生縮圖</button>
+            <span id="thumbStatus" style="color: #666;">載入中...</span>
+          </div>
+          <small style="color: #888; margin-top: 5px; display: block;">※ 需要安裝 ffmpeg</small>
+        </div>
+        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
+          <label>清理重複記錄 - 相同 CDN URL 只保留第一筆</label>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <button class="btn btn-primary" onclick="cleanupDuplicates()" id="dupBtn">🗑️ 清理重複</button>
+            <span id="dupStatus" style="color: #666;"></span>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
+          <label>修復檔案路徑 - 重複的 backupPath 改為唯一，然後重新下載</label>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <button class="btn btn-primary" onclick="repairPaths()" id="repairBtn">🔧 修復路徑</button>
+            <span id="repairStatus" style="color: #666;"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -496,9 +589,179 @@ function adminPage() {
       }
     }
 
+    async function fixUntitled() {
+      const statusEl = document.getElementById('untitledStatus');
+      statusEl.textContent = '修復中...';
+      try {
+        const res = await fetch('/lurl/api/fix-untitled', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          if (data.fixed > 0) {
+            showToast('已修復 ' + data.fixed + ' 個 untitled 記錄！');
+            statusEl.textContent = '已修復 ' + data.fixed + ' 筆';
+            loadRecords(); // 重新載入記錄
+          } else {
+            showToast(data.message || '沒有需要修復的記錄');
+            statusEl.textContent = '無需修復';
+          }
+        } else {
+          showToast('修復失敗: ' + (data.error || '未知錯誤'), 'error');
+          statusEl.textContent = '修復失敗';
+        }
+      } catch (e) {
+        showToast('修復失敗: ' + e.message, 'error');
+        statusEl.textContent = '修復失敗';
+      }
+    }
+
+    async function loadRetryStatus() {
+      try {
+        const res = await fetch('/lurl/api/retry-status');
+        const data = await res.json();
+        const statusEl = document.getElementById('retryStatus');
+        const btn = document.getElementById('retryBtn');
+        if (data.ok) {
+          if (!data.puppeteerAvailable) {
+            statusEl.textContent = '⚠️ Puppeteer 未安裝';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+          } else if (data.failed === 0) {
+            statusEl.textContent = '✅ 沒有失敗記錄';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+          } else {
+            statusEl.textContent = '待重試: ' + data.failed + ' 個';
+          }
+        }
+      } catch (e) {
+        document.getElementById('retryStatus').textContent = '載入失敗';
+      }
+    }
+
+    async function retryFailed() {
+      const statusEl = document.getElementById('retryStatus');
+      const btn = document.getElementById('retryBtn');
+      btn.disabled = true;
+      statusEl.textContent = '處理中...';
+      try {
+        const res = await fetch('/lurl/api/retry-failed', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          if (data.total === 0) {
+            showToast(data.message || '沒有需要重試的記錄');
+            statusEl.textContent = '無需重試';
+          } else {
+            showToast('開始重試 ' + data.total + ' 個記錄，請查看 server console');
+            statusEl.textContent = '背景處理中 (' + data.total + ' 個)';
+          }
+        } else {
+          showToast('重試失敗: ' + (data.error || '未知錯誤'), 'error');
+          statusEl.textContent = '重試失敗';
+          btn.disabled = false;
+        }
+      } catch (e) {
+        showToast('重試失敗: ' + e.message, 'error');
+        statusEl.textContent = '重試失敗';
+        btn.disabled = false;
+      }
+    }
+
+    async function loadThumbStatus() {
+      // 簡單顯示「就緒」，不需要預先計算
+      document.getElementById('thumbStatus').textContent = '就緒';
+    }
+
+    async function generateThumbnails() {
+      const statusEl = document.getElementById('thumbStatus');
+      const btn = document.getElementById('thumbBtn');
+      btn.disabled = true;
+      statusEl.textContent = '處理中...';
+      try {
+        const res = await fetch('/lurl/api/generate-thumbnails', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          if (data.total === 0) {
+            showToast(data.message || '所有影片都已有縮圖');
+            statusEl.textContent = '無需產生';
+          } else {
+            showToast('開始產生 ' + data.total + ' 個縮圖');
+            statusEl.textContent = '背景處理中 (' + data.total + ' 個)';
+          }
+        } else {
+          showToast('產生失敗: ' + (data.error || '未知錯誤'), 'error');
+          statusEl.textContent = '產生失敗';
+          btn.disabled = false;
+        }
+      } catch (e) {
+        showToast('產生失敗: ' + e.message, 'error');
+        statusEl.textContent = '產生失敗';
+        btn.disabled = false;
+      }
+    }
+
+    async function repairPaths() {
+      const statusEl = document.getElementById('repairStatus');
+      const btn = document.getElementById('repairBtn');
+      btn.disabled = true;
+      statusEl.textContent = '處理中...';
+      try {
+        const res = await fetch('/lurl/api/repair-paths', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(data.message);
+          statusEl.textContent = data.fixed > 0 ? '已修復 ' + data.fixed + ' 個' : '無需修復';
+          if (data.fixed > 0) {
+            loadStats();
+            loadRecords();
+            loadRetryStatus(); // 更新重試狀態
+          }
+        } else {
+          showToast('修復失敗: ' + (data.error || '未知錯誤'), 'error');
+          statusEl.textContent = '修復失敗';
+        }
+        btn.disabled = false;
+      } catch (e) {
+        showToast('修復失敗: ' + e.message, 'error');
+        statusEl.textContent = '修復失敗';
+        btn.disabled = false;
+      }
+    }
+
+    async function cleanupDuplicates() {
+      const statusEl = document.getElementById('dupStatus');
+      const btn = document.getElementById('dupBtn');
+      btn.disabled = true;
+      statusEl.textContent = '處理中...';
+      try {
+        const res = await fetch('/lurl/api/cleanup-duplicates', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          if (data.removed === 0) {
+            showToast(data.message || '沒有重複記錄');
+            statusEl.textContent = '無重複';
+          } else {
+            showToast('已清理 ' + data.removed + ' 個重複記錄');
+            statusEl.textContent = '已清理 ' + data.removed + ' 個';
+            loadStats();
+            loadRecords();
+          }
+        } else {
+          showToast('清理失敗: ' + (data.error || '未知錯誤'), 'error');
+          statusEl.textContent = '清理失敗';
+        }
+        btn.disabled = false;
+      } catch (e) {
+        showToast('清理失敗: ' + e.message, 'error');
+        statusEl.textContent = '清理失敗';
+        btn.disabled = false;
+      }
+    }
+
     loadStats();
     loadRecords();
     loadVersionConfig();
+    loadRetryStatus();
+    loadThumbStatus();
   </script>
 </body>
 </html>`;
@@ -509,6 +772,7 @@ function browsePage() {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl 影片庫</title>
   <style>
@@ -587,8 +851,8 @@ function browsePage() {
     }
     .card-thumb.pending { background: linear-gradient(135deg, #3d2a1a 0%, #1a1a1a 100%); }
     .card-thumb.image { background: linear-gradient(135deg, #2d1a3d 0%, #1a1a2e 100%); }
-    .card-thumb img { width: 100%; height: 100%; object-fit: cover; filter: blur(12px); transition: filter 0.3s; position: absolute; top: 0; left: 0; }
-    .card:hover .card-thumb img { filter: blur(6px); }
+    .card-thumb img { width: 100%; height: 100%; object-fit: cover; filter: blur(4px); transition: filter 0.3s; position: absolute; top: 0; left: 0; }
+    .card:hover .card-thumb img { filter: blur(2px); }
 
     /* Card Info */
     .card-info { padding: 12px; }
@@ -661,6 +925,7 @@ function browsePage() {
         <button class="tab active" data-type="all">全部</button>
         <button class="tab" data-type="video">影片</button>
         <button class="tab" data-type="image">圖片</button>
+        <button class="tab" data-type="pending" style="background:#f59e0b;color:#000;">未下載</button>
       </div>
       <div class="result-count" id="resultCount"></div>
     </div>
@@ -681,9 +946,14 @@ function browsePage() {
 
   <script>
     let allRecords = [];
-    let currentType = 'all';
+    let currentType = localStorage.getItem('lurl_browse_tab') || 'all';
     let searchQuery = '';
-    let isLoading = true;
+    let isLoading = false;
+
+    // 恢復上次的 tab 狀態
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.type === currentType);
+    });
 
     function showSkeleton() {
       document.getElementById('grid').innerHTML = Array(8).fill(0).map(() => \`
@@ -797,6 +1067,7 @@ function browsePage() {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentType = tab.dataset.type;
+        localStorage.setItem('lurl_browse_tab', currentType);
         loadRecords(); // 重新從 server 載入
       });
     });
@@ -834,6 +1105,7 @@ function viewPage(record, fileExists) {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} - Lurl</title>
   <style>
@@ -847,8 +1119,9 @@ function viewPage(record, fileExists) {
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
     .header nav a:hover { color: white; }
     .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; min-height: 200px; display: flex; align-items: center; justify-content: center; }
-    .media-container video, .media-container img { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
+    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; }
+    .media-container video { width: 100%; max-height: 70vh; object-fit: contain; display: block; aspect-ratio: 16/9; background: #000; }
+    .media-container img { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
     .media-missing { color: #666; text-align: center; padding: 40px; }
     .media-missing p { margin-bottom: 15px; }
     .info { background: #1a1a1a; border-radius: 12px; padding: 20px; }
@@ -985,59 +1258,6 @@ module.exports = {
       return;
     }
 
-    // GET /api/version - 腳本版本檢查（公開，不需要驗證）
-    if (req.method === 'GET' && urlPath === '/api/version') {
-      try {
-        const versionFile = path.join(__dirname, 'version.json');
-        const versionConfig = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
-        const clientVersion = query.v || '0.0.0';
-        console.log(`[lurl] 版本檢查: client=${clientVersion}, latest=${versionConfig.latestVersion}`);
-        res.writeHead(200, corsHeaders());
-        res.end(JSON.stringify(versionConfig));
-      } catch (err) {
-        res.writeHead(200, corsHeaders());
-        res.end(JSON.stringify({
-          latestVersion: '0.0.0',
-          minVersion: '0.0.0',
-          message: '',
-          updateUrl: '',
-          forceUpdate: false,
-          announcement: ''
-        }));
-      }
-      return;
-    }
-
-    // POST /api/version - 更新版本設定（需要 Admin 登入）
-    if (req.method === 'POST' && urlPath === '/api/version') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, corsHeaders());
-        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
-        return;
-      }
-      try {
-        const body = await parseBody(req);
-        const versionFile = path.join(__dirname, 'version.json');
-        const config = {
-          latestVersion: body.latestVersion || '0.0.0',
-          minVersion: body.minVersion || '0.0.0',
-          message: body.message || '',
-          updateUrl: body.updateUrl || '',
-          forceUpdate: body.forceUpdate || false,
-          announcement: body.announcement || ''
-        };
-        fs.writeFileSync(versionFile, JSON.stringify(config, null, 2));
-        console.log('[lurl] 版本設定已更新:', config.latestVersion);
-        res.writeHead(200, corsHeaders());
-        res.end(JSON.stringify({ ok: true }));
-      } catch (err) {
-        console.error('[lurl] 更新版本設定失敗:', err);
-        res.writeHead(500, corsHeaders());
-        res.end(JSON.stringify({ ok: false, error: err.message }));
-      }
-      return;
-    }
-
     // POST /capture (需要 CLIENT_TOKEN)
     if (req.method === 'POST' && urlPath === '/capture') {
       if (!isClientAuthenticated(req)) {
@@ -1054,9 +1274,9 @@ module.exports = {
           return;
         }
 
-        // 去重：用 pageUrl 判斷（同一頁面不建立重複記錄）
+        // 去重：用 pageUrl 或 fileUrl 判斷
         const existingRecords = readAllRecords();
-        const duplicate = existingRecords.find(r => r.pageUrl === pageUrl);
+        const duplicate = existingRecords.find(r => r.pageUrl === pageUrl || r.fileUrl === fileUrl);
         if (duplicate) {
           // 檢查檔案是否真的存在
           const filePath = path.join(DATA_DIR, duplicate.backupPath);
@@ -1127,8 +1347,20 @@ module.exports = {
         console.log(`[lurl] 記錄已存: ${title}`);
 
         // 後端用 cookies 嘗試下載（可能會失敗，但前端會補上傳）
-        downloadFile(fileUrl, path.join(targetDir, filename), pageUrl, cookies || '').then(ok => {
+        const videoFullPath = path.join(targetDir, filename);
+        downloadFile(fileUrl, videoFullPath, pageUrl, cookies || '').then(async (ok) => {
           console.log(`[lurl] 後端備份${ok ? '完成' : '失敗'}: ${filename}${cookies ? ' (有cookie)' : ''}`);
+
+          // 下載成功且是影片且沒有縮圖 → 用 ffmpeg 產生縮圖
+          if (ok && type === 'video' && !thumbnailPath) {
+            const thumbFilename = `${id}.jpg`;
+            const thumbFullPath = path.join(THUMBNAILS_DIR, thumbFilename);
+            const thumbOk = await generateVideoThumbnail(videoFullPath, thumbFullPath);
+            if (thumbOk) {
+              // 更新記錄加入 thumbnailPath
+              updateRecordThumbnail(id, `thumbnails/${thumbFilename}`);
+            }
+          }
         });
 
         res.writeHead(200, corsHeaders());
@@ -1264,9 +1496,22 @@ module.exports = {
       const page = parseInt(query.page) || 1;
       const limit = parseInt(query.limit) || 50; // 預設每頁 50 筆
 
+      // 先檢查檔案存在狀態
+      records = records.map(r => ({
+        ...r,
+        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath))
+      }));
+
       // Type filter
-      if (type && type !== 'all') {
-        records = records.filter(r => r.type === type);
+      if (type === 'pending') {
+        // 未下載：只顯示檔案不存在的
+        records = records.filter(r => !r.fileExists);
+      } else {
+        // 全部/影片/圖片：只顯示已下載的
+        records = records.filter(r => r.fileExists);
+        if (type && type !== 'all') {
+          records = records.filter(r => r.type === type);
+        }
       }
 
       // Search filter (q parameter)
@@ -1286,10 +1531,9 @@ module.exports = {
       const start = (page - 1) * limit;
       const paginatedRecords = records.slice(start, start + limit);
 
-      // 只對當前頁的記錄檢查 fileExists（大幅減少 I/O）
+      // 只對當前頁加上縮圖狀態
       const recordsWithStatus = paginatedRecords.map(r => ({
         ...r,
-        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)),
         thumbnailExists: r.thumbnailPath ? fs.existsSync(path.join(DATA_DIR, r.thumbnailPath)) : false
       }));
 
@@ -1301,6 +1545,408 @@ module.exports = {
         limit,
         totalPages,
         hasMore: page < totalPages
+      }));
+      return;
+    }
+
+    // GET /api/version - 腳本版本檢查（公開，不需要驗證）
+    if (req.method === 'GET' && urlPath === '/api/version') {
+      try {
+        const versionFile = path.join(__dirname, 'version.json');
+        if (fs.existsSync(versionFile)) {
+          const versionConfig = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify(versionConfig));
+        } else {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({
+            latestVersion: '0.0.0',
+            minVersion: '0.0.0',
+            message: '',
+            updateUrl: '',
+            forceUpdate: false,
+            announcement: ''
+          }));
+        }
+      } catch (err) {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          latestVersion: '0.0.0',
+          minVersion: '0.0.0',
+          message: '',
+          updateUrl: '',
+          forceUpdate: false,
+          announcement: ''
+        }));
+      }
+      return;
+    }
+
+    // POST /api/version - 更新版本設定（需要 Admin 登入）
+    if (req.method === 'POST' && urlPath === '/api/version') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+      try {
+        const body = await parseBody(req);
+        const versionFile = path.join(__dirname, 'version.json');
+        const config = {
+          latestVersion: body.latestVersion || '0.0.0',
+          minVersion: body.minVersion || '0.0.0',
+          message: body.message || '',
+          updateUrl: body.updateUrl || '',
+          forceUpdate: body.forceUpdate || false,
+          announcement: body.announcement || ''
+        };
+        fs.writeFileSync(versionFile, JSON.stringify(config, null, 2));
+        console.log('[lurl] 版本設定已更新:', config.latestVersion);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        console.error('[lurl] 更新版本設定失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/fix-untitled - 修復 untitled 記錄（需要 Admin 登入）
+    if (req.method === 'POST' && urlPath === '/api/fix-untitled') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+      try {
+        const records = readAllRecords();
+        const untitledRecords = records.filter(r => r.title === 'untitled');
+
+        if (untitledRecords.length === 0) {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, fixed: 0, message: '沒有需要修復的 untitled 記錄' }));
+          return;
+        }
+
+        // 讀取所有行
+        const lines = fs.readFileSync(RECORDS_FILE, 'utf8').split('\n').filter(l => l.trim());
+        const newLines = lines.map(line => {
+          try {
+            const record = JSON.parse(line);
+            if (record.title === 'untitled') {
+              // 使用 ID 作為唯一標識
+              record.title = `untitled_${record.id}`;
+            }
+            return JSON.stringify(record);
+          } catch (e) {
+            return line;
+          }
+        });
+
+        // 寫回檔案
+        fs.writeFileSync(RECORDS_FILE, newLines.join('\n') + '\n');
+        console.log(`[lurl] 已修復 ${untitledRecords.length} 個 untitled 記錄`);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, fixed: untitledRecords.length }));
+      } catch (err) {
+        console.error('[lurl] 修復 untitled 失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/cleanup-duplicates - 清理重複記錄（需要 Admin 登入）
+    if (req.method === 'POST' && urlPath === '/api/cleanup-duplicates') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const records = readAllRecords();
+        const seen = new Map(); // fileUrl -> record (保留第一個)
+        const toRemove = [];
+
+        records.forEach(r => {
+          // 優先用 fileUrl 去重，若 fileUrl 相同只保留第一筆
+          if (seen.has(r.fileUrl)) {
+            toRemove.push(r);
+          } else {
+            seen.set(r.fileUrl, r);
+          }
+        });
+
+        if (toRemove.length === 0) {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, removed: 0, message: '沒有重複記錄' }));
+          return;
+        }
+
+        // 刪除重複記錄的檔案（如果有）
+        toRemove.forEach(r => {
+          const filePath = path.join(DATA_DIR, r.backupPath);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`[lurl] 刪除重複檔案: ${r.backupPath}`);
+          }
+          if (r.thumbnailPath) {
+            const thumbPath = path.join(DATA_DIR, r.thumbnailPath);
+            if (fs.existsSync(thumbPath)) {
+              fs.unlinkSync(thumbPath);
+            }
+          }
+        });
+
+        // 保留的記錄
+        const keepRecords = Array.from(seen.values());
+        fs.writeFileSync(RECORDS_FILE, keepRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
+
+        console.log(`[lurl] 已清理 ${toRemove.length} 個重複記錄`);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, removed: toRemove.length }));
+      } catch (err) {
+        console.error('[lurl] 清理重複失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/repair-paths - 修復重複的 backupPath（需要 Admin 登入）
+    if (req.method === 'POST' && urlPath === '/api/repair-paths') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const records = readAllRecords();
+
+        // 找出 backupPath 重複的
+        const pathCounts = {};
+        records.forEach(r => {
+          pathCounts[r.backupPath] = (pathCounts[r.backupPath] || 0) + 1;
+        });
+
+        const duplicatePaths = new Set(
+          Object.entries(pathCounts).filter(([_, count]) => count > 1).map(([p]) => p)
+        );
+
+        if (duplicatePaths.size === 0) {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, fixed: 0, message: '沒有重複的檔案路徑' }));
+          return;
+        }
+
+        let fixedCount = 0;
+        const updatedRecords = records.map(r => {
+          if (duplicatePaths.has(r.backupPath)) {
+            // 產生新的唯一檔名
+            const ext = path.extname(r.backupPath);
+            const folder = r.type === 'video' ? 'videos' : 'images';
+            const safeTitle = sanitizeFilename(r.title.replace(/_[a-z0-9]+$/i, '')); // 移除舊的 ID 後綴
+            const newFilename = `${safeTitle}_${r.id}${ext}`;
+            const newBackupPath = `${folder}/${newFilename}`;
+
+            console.log(`[lurl] 修復路徑: ${r.backupPath} → ${newBackupPath}`);
+
+            fixedCount++;
+            return {
+              ...r,
+              backupPath: newBackupPath,
+              fileExists: false, // 標記需要重新下載
+            };
+          }
+          return r;
+        });
+
+        // 寫回檔案
+        fs.writeFileSync(RECORDS_FILE, updatedRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
+
+        console.log(`[lurl] 已修復 ${fixedCount} 個重複路徑`);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          fixed: fixedCount,
+          message: `已修復 ${fixedCount} 個路徑，請執行「重試失敗下載」重新抓取`
+        }));
+      } catch (err) {
+        console.error('[lurl] 修復路徑失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/generate-thumbnails - 為現有影片產生縮圖（需要 Admin 登入）
+    if (req.method === 'POST' && urlPath === '/api/generate-thumbnails') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const records = readAllRecords();
+        // 找出有影片檔案但沒縮圖的記錄
+        const needThumbnails = records.filter(r => {
+          if (r.type !== 'video') return false;
+          if (r.thumbnailPath && fs.existsSync(path.join(DATA_DIR, r.thumbnailPath))) return false;
+          const videoPath = path.join(DATA_DIR, r.backupPath);
+          return fs.existsSync(videoPath);
+        });
+
+        if (needThumbnails.length === 0) {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, total: 0, message: '所有影片都已有縮圖' }));
+          return;
+        }
+
+        console.log(`[lurl] 開始產生 ${needThumbnails.length} 個縮圖`);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          total: needThumbnails.length,
+          message: `開始產生 ${needThumbnails.length} 個縮圖...`
+        }));
+
+        // 背景執行
+        (async () => {
+          let successCount = 0;
+          for (let i = 0; i < needThumbnails.length; i++) {
+            const record = needThumbnails[i];
+            console.log(`[lurl] 產生縮圖 ${i + 1}/${needThumbnails.length}: ${record.id}`);
+
+            const videoPath = path.join(DATA_DIR, record.backupPath);
+            const thumbFilename = `${record.id}.jpg`;
+            const thumbPath = path.join(THUMBNAILS_DIR, thumbFilename);
+
+            const ok = await generateVideoThumbnail(videoPath, thumbPath);
+            if (ok) {
+              updateRecordThumbnail(record.id, `thumbnails/${thumbFilename}`);
+              successCount++;
+            }
+
+            // 間隔避免太快
+            if (i < needThumbnails.length - 1) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
+          console.log(`[lurl] 縮圖產生完成: ${successCount}/${needThumbnails.length}`);
+        })().catch(err => {
+          console.error('[lurl] 縮圖產生錯誤:', err);
+        });
+
+      } catch (err) {
+        console.error('[lurl] 縮圖產生失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/retry-failed - 重試下載失敗的檔案（需要 Admin 登入）
+    // 使用 Puppeteer 開原頁面，在頁面 context 裡下載 CDN
+    if (req.method === 'POST' && urlPath === '/api/retry-failed') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      if (!lurlRetry) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Puppeteer 未安裝，請執行 npm install' }));
+        return;
+      }
+
+      try {
+        const records = readAllRecords();
+        // 找出下載失敗的記錄 (fileExists === false 或檔案不存在)
+        const failedRecords = records.filter(r => {
+          if (r.fileExists === false) return true;
+          const filePath = path.join(DATA_DIR, r.backupPath);
+          return !fs.existsSync(filePath);
+        });
+
+        if (failedRecords.length === 0) {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, total: 0, message: '沒有需要重試的失敗記錄' }));
+          return;
+        }
+
+        console.log(`[lurl] 開始用 Puppeteer 重試 ${failedRecords.length} 個失敗記錄`);
+
+        // 非同步處理，先回傳
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          total: failedRecords.length,
+          message: `開始重試 ${failedRecords.length} 個失敗記錄，處理中...`
+        }));
+
+        // 背景執行重試 - 用 Puppeteer 在頁面 context 下載
+        (async () => {
+          const result = await lurlRetry.batchRetry(failedRecords, DATA_DIR, (current, total, record) => {
+            console.log(`[lurl] 重試進度: ${current}/${total} - ${record.id}`);
+          });
+
+          // 更新記錄的 fileExists 狀態
+          if (result.successCount > 0) {
+            const lines = fs.readFileSync(RECORDS_FILE, 'utf8').split('\n').filter(l => l.trim());
+            const newLines = lines.map(line => {
+              try {
+                const rec = JSON.parse(line);
+                if (result.successIds.includes(rec.id)) {
+                  rec.fileExists = true;
+                  rec.retrySuccess = true;
+                  rec.retriedAt = new Date().toISOString();
+                }
+                return JSON.stringify(rec);
+              } catch (e) {
+                return line;
+              }
+            });
+            fs.writeFileSync(RECORDS_FILE, newLines.join('\n') + '\n');
+          }
+
+          console.log(`[lurl] 重試完成: 成功 ${result.successCount}/${result.total}`);
+        })().catch(err => {
+          console.error('[lurl] 重試過程發生錯誤:', err);
+        });
+
+      } catch (err) {
+        console.error('[lurl] 重試失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/retry-status - 取得失敗記錄數量
+    if (req.method === 'GET' && urlPath === '/api/retry-status') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+      const records = readAllRecords();
+      const failedRecords = records.filter(r => {
+        if (r.fileExists === false) return true;
+        const filePath = path.join(DATA_DIR, r.backupPath);
+        return !fs.existsSync(filePath);
+      });
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        failed: failedRecords.length,
+        puppeteerAvailable: !!lurlRetry
       }));
       return;
     }
