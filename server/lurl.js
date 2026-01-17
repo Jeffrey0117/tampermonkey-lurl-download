@@ -62,15 +62,7 @@ function isAdminAuthenticated(req) {
 
 function isClientAuthenticated(req) {
   const token = req.headers['x-client-token'];
-  if (token === CLIENT_TOKEN) return true;
-
-  // 過渡期：允許沒有 token 的舊版腳本，但打 log 警告
-  // TODO: 之後移除這段，強制要求 token
-  if (!token) {
-    console.log('[lurl] ⚠️ 收到沒有 X-Client-Token 的請求（舊版腳本）');
-    return true; // 暫時允許
-  }
-  return false;
+  return token === CLIENT_TOKEN;
 }
 
 function loginPage(error = '') {
