@@ -566,7 +566,7 @@
       return h1 && h1.textContent.includes('該連結已過期');
     },
 
-    // 主動檢查過期並顯示修復彈窗
+    // 主動檢查過期並插入 LurlHub 按鈕
     checkAndRecover: async () => {
       if (!RecoveryService.isPageExpired()) return false;
 
@@ -576,7 +576,6 @@
 
       if (!backup.hasBackup) {
         console.log('[LurlHub] 無備份可用');
-        Utils.showToast('😢 此資源無法修復（無備份）', 'warning');
         return true;
       }
 
@@ -588,26 +587,96 @@
         return true;
       }
 
-      // 未修復過 → 顯示彈窗
-      console.log('[LurlHub] 有備份可用，顯示修復彈窗');
-      RecoveryService.showModal(backup.quota, async () => {
-        try {
-          const result = await RecoveryService.recover(pageUrl);
-          RecoveryService.replaceResource(result.backupUrl, result.record.type);
-          if (result.alreadyRecovered) {
-            Utils.showToast('✅ 已自動載入備份', 'success');
-          } else {
-            Utils.showToast(`✅ 修復成功！剩餘額度: ${result.quota.remaining}`, 'success');
-          }
-        } catch (err) {
-          if (err.error === 'quota_exhausted') {
-            Utils.showToast('❌ 額度已用完', 'error');
-          } else {
-            Utils.showToast('❌ 修復失敗', 'error');
-          }
-        }
-      });
+      // 未修復過 → 在 h1 底下插入 LurlHub 按鈕
+      console.log('[LurlHub] 有備份可用，插入修復按鈕');
+      RecoveryService.insertRecoveryButton(backup, pageUrl);
       return true;
+    },
+
+    // 在過期 h1 底下插入 LurlHub 按鈕
+    insertRecoveryButton: (backup, pageUrl) => {
+      const h1 = document.querySelector('h1');
+      if (!h1) return;
+
+      // 移除舊的按鈕
+      const oldBtn = document.getElementById('lurlhub-recovery-btn');
+      if (oldBtn) oldBtn.remove();
+
+      const btnContainer = document.createElement('div');
+      btnContainer.id = 'lurlhub-recovery-btn';
+      btnContainer.innerHTML = `
+        <style>
+          #lurlhub-recovery-btn {
+            text-align: center;
+            margin: 20px auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          }
+          .lurlhub-btn-main {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid rgba(59,130,246,0.5);
+            border-radius: 12px;
+            padding: 15px 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+          }
+          .lurlhub-btn-main:hover {
+            transform: scale(1.02);
+            border-color: #3b82f6;
+            box-shadow: 0 5px 20px rgba(59,130,246,0.3);
+          }
+          .lurlhub-btn-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+          }
+          .lurlhub-btn-text {
+            text-align: left;
+          }
+          .lurlhub-btn-brand {
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+          }
+          .lurlhub-btn-tagline {
+            font-size: 12px;
+            color: #3b82f6;
+          }
+        </style>
+        <div class="lurlhub-btn-main" id="lurlhub-trigger">
+          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-btn-logo" onerror="this.style.display='none'">
+          <div class="lurlhub-btn-text">
+            <div class="lurlhub-btn-brand">LurlHub</div>
+            <div class="lurlhub-btn-tagline">連結失效？我們有備份 →</div>
+          </div>
+        </div>
+      `;
+
+      h1.insertAdjacentElement('afterend', btnContainer);
+
+      // 點擊按鈕顯示彈窗
+      document.getElementById('lurlhub-trigger').onclick = () => {
+        RecoveryService.showModal(backup.quota, async () => {
+          try {
+            const result = await RecoveryService.recover(pageUrl);
+            RecoveryService.replaceResource(result.backupUrl, result.record.type);
+            btnContainer.remove(); // 移除按鈕
+            if (result.alreadyRecovered) {
+              Utils.showToast('✅ 已自動載入備份', 'success');
+            } else {
+              Utils.showToast(`✅ 修復成功！剩餘額度: ${result.quota.remaining}`, 'success');
+            }
+          } catch (err) {
+            if (err.error === 'quota_exhausted') {
+              Utils.showToast('❌ 額度已用完', 'error');
+            } else {
+              Utils.showToast('❌ 修復失敗', 'error');
+            }
+          }
+        });
+      };
     },
 
     // 檢查是否有備份
