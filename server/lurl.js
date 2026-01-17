@@ -26,11 +26,12 @@ const DATA_DIR = path.join(__dirname, '..', 'data', 'lurl');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.jsonl');
 const VIDEOS_DIR = path.join(DATA_DIR, 'videos');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
+const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 
 // ==================== 工具函數 ====================
 
 function ensureDirs() {
-  [DATA_DIR, VIDEOS_DIR, IMAGES_DIR].forEach(dir => {
+  [DATA_DIR, VIDEOS_DIR, IMAGES_DIR, THUMBNAILS_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -187,6 +188,8 @@ function adminPage() {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
     .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header .logo-title { display: flex; align-items: center; gap: 10px; }
+    .header .logo { height: 36px; width: auto; }
     .header h1 { font-size: 1.3em; }
     .header nav { display: flex; gap: 20px; }
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
@@ -217,7 +220,10 @@ function adminPage() {
 </head>
 <body>
   <div class="header">
-    <h1>Lurl</h1>
+    <div class="logo-title">
+      <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
+      <h1>管理面板</h1>
+    </div>
     <nav>
       <a href="/lurl/admin" class="active">管理面板</a>
       <a href="/lurl/browse">影片庫</a>
@@ -321,6 +327,8 @@ function browsePage() {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
     .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .header .logo-title { display: flex; align-items: center; gap: 10px; }
+    .header .logo { height: 36px; width: auto; }
     .header h1 { font-size: 1.3em; }
     .header nav { display: flex; gap: 20px; }
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
@@ -377,6 +385,7 @@ function browsePage() {
       justify-content: center;
       backdrop-filter: blur(4px);
       transition: all 0.2s;
+      z-index: 2;
     }
     .card:hover .card-thumb .play-icon { background: rgba(59,130,246,0.8); transform: scale(1.1); }
     .card-thumb .play-icon::after {
@@ -430,7 +439,10 @@ function browsePage() {
 </head>
 <body>
   <div class="header">
-    <h1>Lurl 影片庫</h1>
+    <div class="logo-title">
+      <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
+      <h1>影片庫</h1>
+    </div>
     <nav>
       <a href="/lurl/admin">Admin</a>
       <a href="/lurl/browse" class="active">Browse</a>
@@ -503,7 +515,9 @@ function browsePage() {
             \${r.fileExists
               ? (r.type === 'image'
                 ? \`<img src="/lurl/files/\${r.backupPath}" alt="\${getTitle(r.title)}" onerror="this.style.display='none'">\`
-                : '<div class="play-icon"></div>')
+                : (r.thumbnailExists && r.thumbnailPath
+                  ? \`<img src="/lurl/files/\${r.thumbnailPath}" alt="\${getTitle(r.title)}" onerror="this.parentElement.innerHTML='<div class=play-icon></div>'"><div class="play-icon" style="position:absolute;"></div>\`
+                  : '<div class="play-icon"></div>'))
               : '<span style="font-size:24px;color:#666">Pending</span>'}
           </div>
           <div class="card-info">
@@ -579,6 +593,8 @@ function viewPage(record, fileExists) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
     .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header .logo-title { display: flex; align-items: center; gap: 10px; }
+    .header .logo { height: 36px; width: auto; }
     .header h1 { font-size: 1.3em; }
     .header nav { display: flex; gap: 20px; }
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
@@ -608,7 +624,9 @@ function viewPage(record, fileExists) {
 </head>
 <body>
   <div class="header">
-    <h1>Lurl</h1>
+    <div class="logo-title">
+      <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
+    </div>
     <nav>
       <a href="/lurl/admin">管理面板</a>
       <a href="/lurl/browse">影片庫</a>
@@ -680,7 +698,7 @@ module.exports = {
     // POST /capture
     if (req.method === 'POST' && urlPath === '/capture') {
       try {
-        const { title, pageUrl, fileUrl, type = 'video', ref, cookies } = await parseBody(req);
+        const { title, pageUrl, fileUrl, type = 'video', ref, cookies, thumbnail } = await parseBody(req);
 
         if (!title || !pageUrl || !fileUrl) {
           res.writeHead(400, corsHeaders());
@@ -728,6 +746,22 @@ module.exports = {
         const folder = type === 'video' ? 'videos' : 'images';
         const backupPath = `${folder}/${filename}`; // 用正斜線，URL 才正確
 
+        // 保存縮圖（如果有）
+        let thumbnailPath = null;
+        if (thumbnail && type === 'video') {
+          try {
+            const thumbFilename = `${id}.jpg`;
+            const thumbFullPath = path.join(THUMBNAILS_DIR, thumbFilename);
+            // thumbnail 是 data:image/jpeg;base64,... 格式
+            const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, '');
+            fs.writeFileSync(thumbFullPath, Buffer.from(base64Data, 'base64'));
+            thumbnailPath = `thumbnails/${thumbFilename}`;
+            console.log(`[lurl] 縮圖已存: ${thumbFilename}`);
+          } catch (thumbErr) {
+            console.error(`[lurl] 縮圖保存失敗: ${thumbErr.message}`);
+          }
+        }
+
         const record = {
           id,
           title,
@@ -737,7 +771,8 @@ module.exports = {
           source: 'lurl',
           capturedAt: new Date().toISOString(),
           backupPath,
-          ...(ref && { ref }) // D卡文章連結（如果有）
+          ...(ref && { ref }), // D卡文章連結（如果有）
+          ...(thumbnailPath && { thumbnailPath }) // 縮圖路徑（如果有）
         };
 
         appendRecord(record);
@@ -879,10 +914,11 @@ module.exports = {
         );
       }
 
-      // 加入 fileExists 狀態
+      // 加入 fileExists 和 thumbnailExists 狀態
       const recordsWithStatus = records.map(r => ({
         ...r,
-        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath))
+        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)),
+        thumbnailExists: r.thumbnailPath ? fs.existsSync(path.join(DATA_DIR, r.thumbnailPath)) : false
       }));
 
       res.writeHead(200, corsHeaders());

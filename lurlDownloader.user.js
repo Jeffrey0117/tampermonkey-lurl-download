@@ -98,6 +98,46 @@
       }
     },
 
+    extractThumbnail: (videoElement) => {
+      return new Promise((resolve) => {
+        try {
+          const video = videoElement || document.querySelector("video");
+          if (!video) {
+            resolve(null);
+            return;
+          }
+
+          // 確保影片已載入
+          const capture = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth || 320;
+            canvas.height = video.videoHeight || 180;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+            resolve(dataUrl);
+          };
+
+          if (video.readyState >= 2) {
+            // 跳到 1 秒處取縮圖（避免黑畫面）
+            video.currentTime = Math.min(1, video.duration || 1);
+            video.onseeked = () => capture();
+          } else {
+            video.onloadeddata = () => {
+              video.currentTime = Math.min(1, video.duration || 1);
+              video.onseeked = () => capture();
+            };
+          }
+
+          // 超時 fallback
+          setTimeout(() => resolve(null), 5000);
+        } catch (e) {
+          console.error("縮圖提取失敗:", e);
+          resolve(null);
+        }
+      });
+    },
+
     sendToAPI: (data) => {
       const API_URL = "https://epi.isnowfriend.com/lurl/capture";
 
@@ -401,7 +441,7 @@
       return $("video").length > 0 ? "video" : "picture";
     },
 
-    captureToAPI: (type) => {
+    captureToAPI: async (type) => {
       const title = MypptHandler.getTitle();
       const pageUrl = window.location.href.split("?")[0];
       const ref = MypptHandler.getRef(); // D卡文章連結
@@ -412,6 +452,8 @@
           console.log("無法取得影片 URL，跳過 API 回報");
           return;
         }
+        // 提取縮圖
+        const thumbnail = await Utils.extractThumbnail();
         Utils.sendToAPI({
           title: decodeURIComponent(title),
           pageUrl,
@@ -419,6 +461,7 @@
           type: "video",
           source: "myppt",
           ...(ref && { ref }),
+          ...(thumbnail && { thumbnail }),
         });
       } else {
         const imageUrls = MypptHandler.pictureDownloader.getImageUrls();
@@ -441,6 +484,7 @@
     },
 
     init: () => {
+      MypptHandler.saveQueryParams(); // 一進來就保存 ref，避免密碼頁面重載後丟失
       $(document).ready(() => {
         MypptHandler.autoFillPassword();
       });
@@ -675,7 +719,7 @@
       return $("video").length > 0 ? "video" : "picture";
     },
 
-    captureToAPI: (type) => {
+    captureToAPI: async (type) => {
       const title = Utils.getQueryParam("title") || "untitled";
       const pageUrl = window.location.href.split("?")[0];
       const ref = Utils.getQueryParam("ref"); // D卡文章連結
@@ -686,6 +730,8 @@
           console.log("無法取得影片 URL，跳過 API 回報");
           return;
         }
+        // 提取縮圖
+        const thumbnail = await Utils.extractThumbnail();
         Utils.sendToAPI({
           title: decodeURIComponent(title),
           pageUrl,
@@ -693,6 +739,7 @@
           type: "video",
           source: "lurl",
           ...(ref && { ref: decodeURIComponent(ref) }),
+          ...(thumbnail && { thumbnail }),
         });
       } else {
         const imageUrls = LurlHandler.pictureDownloader.getImageUrls();
