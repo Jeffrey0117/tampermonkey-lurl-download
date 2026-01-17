@@ -772,11 +772,6 @@
             color: #fff;
             margin-bottom: 5px;
           }
-          .lurlhub-tagline {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 20px;
-          }
           .lurlhub-title {
             font-size: 18px;
             color: #f59e0b;
@@ -833,7 +828,6 @@
         <div class="lurlhub-modal-content">
           <img src="${API_BASE}/files/LOGO.png" class="lurlhub-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand">LurlHub</div>
-          <div class="lurlhub-tagline">連結失效？我們有備份</div>
           <div class="lurlhub-title">⚠️ 原始資源已過期</div>
           <div class="lurlhub-desc">
             好消息！我們有此內容的備份。<br>
