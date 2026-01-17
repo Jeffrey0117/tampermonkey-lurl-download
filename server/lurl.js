@@ -504,36 +504,36 @@ function adminPage() {
         <div class="maintenance-item">
           <div class="maintenance-icon">🔧</div>
           <div class="maintenance-label">修復 Untitled</div>
-          <div class="maintenance-desc">重新抓取缺少標題的記錄</div>
           <button class="btn btn-primary btn-sm" onclick="fixUntitled()">執行</button>
+          <div class="maintenance-desc">重新抓取缺少標題的記錄</div>
           <div class="maintenance-status" id="untitledStatus"></div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🔄</div>
           <div class="maintenance-label">重試下載</div>
-          <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
           <button class="btn btn-primary btn-sm" onclick="retryFailed()" id="retryBtn">執行</button>
+          <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
           <div class="maintenance-status" id="retryStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🖼️</div>
           <div class="maintenance-label">產生縮圖</div>
-          <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
           <button class="btn btn-primary btn-sm" onclick="generateThumbnails()" id="thumbBtn">執行</button>
+          <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
           <div class="maintenance-status" id="thumbStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">🗑️</div>
           <div class="maintenance-label">清理重複</div>
-          <div class="maintenance-desc">移除重複的 pageUrl/fileUrl 記錄</div>
           <button class="btn btn-primary btn-sm" onclick="cleanupDuplicates()" id="dupBtn">執行</button>
+          <div class="maintenance-desc">移除重複的 pageUrl/fileUrl 記錄</div>
           <div class="maintenance-status" id="dupStatus">-</div>
         </div>
         <div class="maintenance-item">
           <div class="maintenance-icon">📁</div>
           <div class="maintenance-label">修復路徑</div>
-          <div class="maintenance-desc">修正指向同一檔案的記錄</div>
           <button class="btn btn-primary btn-sm" onclick="repairPaths()" id="repairBtn">執行</button>
+          <div class="maintenance-desc">修正指向同一檔案的記錄</div>
           <div class="maintenance-status" id="repairStatus">-</div>
         </div>
       </div>
