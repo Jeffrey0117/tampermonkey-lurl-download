@@ -136,29 +136,29 @@ GET /api/records?q=關鍵字&type=video&page=1&limit=20
 
 ## 實作計畫
 
-### Sprint 1: 效能與搜尋 ⬅️ 現在
+### Sprint 1: 效能與搜尋 ✅ 完成
 - [x] 修復舊記錄 backupPath 問題
-- [ ] P0: Browse 頁面效能優化（移除 video preload）
-- [ ] P1: 新增搜尋欄位（前端即時過濾）
-- [ ] P2: API 支援 q 參數搜尋
-- [ ] P3: 卡片顯示 ID 標籤（可複製）
-- [ ] Commit & Push
+- [x] P0: Browse 頁面效能優化（移除 video preload）
+- [x] P1: 新增搜尋欄位（前端即時過濾）
+- [x] P2: API 支援 q 參數搜尋
+- [x] P3: 卡片顯示 ID 標籤（可複製）
+- [x] Commit & Push
 
-### Sprint 2: UI 改版
-- [ ] 重新設計 browse 頁面樣式
-- [ ] 重新設計 view 頁面
-- [ ] 新增首頁 landing page
-- [ ] RWD 響應式設計
+### Sprint 2: UI 改版 ✅ 完成
+- [x] 重新設計 browse 頁面樣式
+- [x] 重新設計 view 頁面
+- [x] 新增首頁 landing page
+- [x] RWD 響應式設計
 
-### Sprint 3: 基礎會員
-- [ ] 簡易登入系統
-- [ ] 貢獻者追蹤（腳本帶 token）
-- [ ] 觀看限制邏輯
+### Sprint 3: 基礎會員 ✅ 完成
+- [x] 簡易登入系統 (token-based)
+- [x] 貢獻者追蹤（腳本帶 token）
+- [x] 觀看限制邏輯
 
-### Sprint 4: 商業化
-- [ ] 付款整合 (Stripe)
-- [ ] 廣告系統
-- [ ] 腳本內提示
+### Sprint 4: 商業化 ✅ 完成
+- [x] 付款整合 (Stripe mock mode)
+- [x] 廣告系統 (5秒倒數廣告)
+- [x] 腳本內提示 (每10次上傳顯示VIP提示)
 
 ---
 
