@@ -48,6 +48,9 @@
 (function ($) {
   "use strict";
 
+  // API 驗證 Token
+  const CLIENT_TOKEN = 'lurl-script-2026';
+
   const Utils = {
     extractMMDD: (dateText) => {
       const pattern = /(\d{4})-(\d{2})-(\d{2})/;
@@ -149,7 +152,10 @@
       GM_xmlhttpRequest({
         method: "POST",
         url: API_URL,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Token": CLIENT_TOKEN
+        },
         data: JSON.stringify(payload),
         onload: (response) => {
           if (response.status === 200) {
@@ -215,6 +221,7 @@
               url: UPLOAD_URL,
               headers: {
                 "Content-Type": "application/octet-stream",
+                "X-Client-Token": CLIENT_TOKEN,
                 "X-Record-Id": recordId,
                 "X-Chunk-Index": String(i),
                 "X-Total-Chunks": String(totalChunks),

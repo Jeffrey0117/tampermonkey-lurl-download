@@ -19,7 +19,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
+
+// ==================== 安全配置 ====================
+const ADMIN_PASSWORD = process.env.LURL_ADMIN_PASSWORD || 'lovelurl2026';
+const CLIENT_TOKEN = process.env.LURL_CLIENT_TOKEN || 'lurl-script-2026';
+const SESSION_SECRET = process.env.LURL_SESSION_SECRET || 'lurl-session-secret-key';
 
 // 資料存放位置
 const DATA_DIR = path.join(__dirname, '..', 'data', 'lurl');
@@ -27,6 +33,75 @@ const RECORDS_FILE = path.join(DATA_DIR, 'records.jsonl');
 const VIDEOS_DIR = path.join(DATA_DIR, 'videos');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
+
+// ==================== 安全函數 ====================
+
+function generateSessionToken(password) {
+  return crypto.createHmac('sha256', SESSION_SECRET).update(password).digest('hex').substring(0, 32);
+}
+
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader) return cookies;
+  cookieHeader.split(';').forEach(cookie => {
+    const [name, ...rest] = cookie.trim().split('=');
+    if (name && rest.length) {
+      cookies[name] = rest.join('=');
+    }
+  });
+  return cookies;
+}
+
+function isAdminAuthenticated(req) {
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionToken = cookies.lurl_session;
+  const validToken = generateSessionToken(ADMIN_PASSWORD);
+  return sessionToken === validToken;
+}
+
+function isClientAuthenticated(req) {
+  const token = req.headers['x-client-token'];
+  return token === CLIENT_TOKEN;
+}
+
+function loginPage(error = '') {
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lurl - 登入</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .login-box { background: #1a1a2e; padding: 40px; border-radius: 12px; width: 100%; max-width: 360px; }
+    .login-box h1 { text-align: center; margin-bottom: 30px; font-size: 1.5em; }
+    .login-box input { width: 100%; padding: 12px 16px; border: none; border-radius: 8px; background: #0f0f0f; color: white; font-size: 1em; margin-bottom: 15px; }
+    .login-box input:focus { outline: 2px solid #3b82f6; }
+    .login-box button { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #3b82f6; color: white; font-size: 1em; cursor: pointer; }
+    .login-box button:hover { background: #2563eb; }
+    .error { color: #f87171; text-align: center; margin-bottom: 15px; font-size: 0.9em; }
+    .logo { text-align: center; margin-bottom: 20px; }
+    .logo img { height: 60px; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="logo"><img src="/lurl/files/LOGO.png" alt="Lurl"></div>
+    <h1>登入</h1>
+    ${error ? `<div class="error">${error}</div>` : ''}
+    <form method="POST" action="/lurl/login">
+      <input type="password" name="password" placeholder="請輸入密碼" autofocus required>
+      <input type="hidden" name="redirect" value="">
+      <button type="submit">登入</button>
+    </form>
+  </div>
+  <script>
+    document.querySelector('input[name="redirect"]').value = new URLSearchParams(window.location.search).get('redirect') || '/lurl/browse';
+  </script>
+</body>
+</html>`;
+}
 
 // ==================== 工具函數 ====================
 
@@ -686,6 +761,49 @@ module.exports = {
       return;
     }
 
+    // ==================== 登入系統 ====================
+
+    // GET /login - 登入頁面
+    if (req.method === 'GET' && urlPath === '/login') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(loginPage());
+      return;
+    }
+
+    // POST /login - 處理登入
+    if (req.method === 'POST' && urlPath === '/login') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        const params = new URLSearchParams(body);
+        const password = params.get('password');
+        const redirect = params.get('redirect') || '/lurl/browse';
+
+        if (password === ADMIN_PASSWORD) {
+          const sessionToken = generateSessionToken(password);
+          res.writeHead(302, {
+            'Set-Cookie': `lurl_session=${sessionToken}; Path=/lurl; HttpOnly; SameSite=Strict; Max-Age=86400`,
+            'Location': redirect
+          });
+          res.end();
+        } else {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(loginPage('密碼錯誤'));
+        }
+      });
+      return;
+    }
+
+    // GET /logout - 登出
+    if (req.method === 'GET' && urlPath === '/logout') {
+      res.writeHead(302, {
+        'Set-Cookie': 'lurl_session=; Path=/lurl; HttpOnly; Max-Age=0',
+        'Location': '/lurl/login'
+      });
+      res.end();
+      return;
+    }
+
     // ==================== Phase 1 ====================
 
     // GET /health
@@ -695,8 +813,13 @@ module.exports = {
       return;
     }
 
-    // POST /capture
+    // POST /capture (需要 CLIENT_TOKEN)
     if (req.method === 'POST' && urlPath === '/capture') {
+      if (!isClientAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: Invalid client token' }));
+        return;
+      }
       try {
         const { title, pageUrl, fileUrl, type = 'video', ref, cookies, thumbnail } = await parseBody(req);
 
@@ -793,8 +916,13 @@ module.exports = {
       return;
     }
 
-    // POST /api/upload - 前端上傳 blob（支援分塊上傳）
+    // POST /api/upload - 前端上傳 blob（支援分塊上傳，需要 CLIENT_TOKEN）
     if (req.method === 'POST' && urlPath === '/api/upload') {
+      if (!isClientAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: Invalid client token' }));
+        return;
+      }
       try {
         const id = req.headers['x-record-id'];
         const chunkIndex = req.headers['x-chunk-index'];
@@ -886,15 +1014,25 @@ module.exports = {
 
     // ==================== Phase 2 ====================
 
-    // GET /admin
+    // GET /admin (需要登入)
     if (req.method === 'GET' && urlPath === '/admin') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(302, { 'Location': '/lurl/login?redirect=/lurl/admin' });
+        res.end();
+        return;
+      }
       res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
       res.end(adminPage());
       return;
     }
 
-    // GET /api/records
+    // GET /api/records (需要登入)
     if (req.method === 'GET' && urlPath === '/api/records') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
       let records = readAllRecords().reverse(); // 最新的在前
       const type = query.type;
       const q = query.q;
@@ -926,8 +1064,13 @@ module.exports = {
       return;
     }
 
-    // GET /api/stats
+    // GET /api/stats (需要登入)
     if (req.method === 'GET' && urlPath === '/api/stats') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
       const records = readAllRecords();
       const videos = records.filter(r => r.type === 'video').length;
       const images = records.filter(r => r.type === 'image').length;
@@ -947,8 +1090,13 @@ module.exports = {
       return;
     }
 
-    // DELETE /api/records/:id
+    // DELETE /api/records/:id (需要登入)
     if (req.method === 'DELETE' && urlPath.startsWith('/api/records/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
       const id = urlPath.replace('/api/records/', '');
       const records = readAllRecords();
       const record = records.find(r => r.id === id);
@@ -977,15 +1125,25 @@ module.exports = {
 
     // ==================== Phase 3 ====================
 
-    // GET /browse
+    // GET /browse (需要登入)
     if (req.method === 'GET' && urlPath === '/browse') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(302, { 'Location': '/lurl/login?redirect=/lurl/browse' });
+        res.end();
+        return;
+      }
       res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
       res.end(browsePage());
       return;
     }
 
-    // GET /view/:id
+    // GET /view/:id (需要登入)
     if (req.method === 'GET' && urlPath.startsWith('/view/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(302, { 'Location': `/lurl/login?redirect=/lurl${urlPath}` });
+        res.end();
+        return;
+      }
       const id = urlPath.replace('/view/', '');
       const records = readAllRecords();
       const record = records.find(r => r.id === id);
@@ -1005,8 +1163,13 @@ module.exports = {
       return;
     }
 
-    // POST /api/retry/:id - 重新下載檔案
+    // POST /api/retry/:id - 重新下載檔案 (需要登入)
     if (req.method === 'POST' && urlPath.startsWith('/api/retry/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
       const id = urlPath.replace('/api/retry/', '');
       const records = readAllRecords();
       const record = records.find(r => r.id === id);
