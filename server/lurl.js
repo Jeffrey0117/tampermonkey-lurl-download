@@ -497,6 +497,22 @@ function browsePage() {
 
     .empty { text-align: center; padding: 60px; color: #666; }
 
+    /* Skeleton Loading */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    .skeleton-card { background: #1a1a1a; border-radius: 12px; overflow: hidden; }
+    .skeleton-thumb { aspect-ratio: 16/9; }
+    .skeleton-info { padding: 12px; }
+    .skeleton-title { height: 20px; border-radius: 4px; margin-bottom: 12px; width: 80%; }
+    .skeleton-meta { height: 14px; border-radius: 4px; width: 50%; }
+
     /* Toast */
     .toast {
       position: fixed;
@@ -536,7 +552,18 @@ function browsePage() {
       </div>
       <div class="result-count" id="resultCount"></div>
     </div>
-    <div class="grid" id="grid"></div>
+    <div class="grid" id="grid">
+      <!-- 骨架屏 -->
+      ${Array(8).fill(0).map(() => `
+        <div class="skeleton-card">
+          <div class="skeleton-thumb skeleton"></div>
+          <div class="skeleton-info">
+            <div class="skeleton-title skeleton"></div>
+            <div class="skeleton-meta skeleton"></div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -544,40 +571,60 @@ function browsePage() {
     let allRecords = [];
     let currentType = 'all';
     let searchQuery = '';
+    let isLoading = true;
 
-    async function loadRecords() {
-      const res = await fetch('/lurl/api/records');
+    function showSkeleton() {
+      document.getElementById('grid').innerHTML = Array(8).fill(0).map(() => \`
+        <div class="skeleton-card">
+          <div class="skeleton-thumb skeleton"></div>
+          <div class="skeleton-info">
+            <div class="skeleton-title skeleton"></div>
+            <div class="skeleton-meta skeleton"></div>
+          </div>
+        </div>
+      \`).join('');
+    }
+
+    let currentPage = 1;
+    let totalRecords = 0;
+    let hasMore = true;
+
+    async function loadRecords(append = false) {
+      if (isLoading) return;
+      if (!append) {
+        currentPage = 1;
+        allRecords = [];
+        hasMore = true;
+        showSkeleton();
+      }
+      isLoading = true;
+
+      const params = new URLSearchParams({
+        page: currentPage,
+        limit: 30,
+        ...(currentType !== 'all' && { type: currentType }),
+        ...(searchQuery && { q: searchQuery })
+      });
+
+      const res = await fetch('/lurl/api/records?' + params);
       const data = await res.json();
-      allRecords = data.records;
-      renderGrid();
+      isLoading = false;
+
+      if (append) {
+        allRecords = [...allRecords, ...data.records];
+      } else {
+        allRecords = data.records;
+      }
+      totalRecords = data.total;
+      hasMore = data.hasMore;
+
+      renderGrid(append);
     }
 
-    function filterRecords() {
-      let filtered = allRecords;
+    function renderGrid(append = false) {
+      document.getElementById('resultCount').textContent = totalRecords + ' items';
 
-      // Type filter
-      if (currentType !== 'all') {
-        filtered = filtered.filter(r => r.type === currentType);
-      }
-
-      // Search filter
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        filtered = filtered.filter(r =>
-          r.id.toLowerCase().includes(q) ||
-          (r.title && r.title.toLowerCase().includes(q)) ||
-          (r.pageUrl && r.pageUrl.toLowerCase().includes(q))
-        );
-      }
-
-      return filtered;
-    }
-
-    function renderGrid() {
-      const filtered = filterRecords();
-      document.getElementById('resultCount').textContent = filtered.length + ' items';
-
-      if (filtered.length === 0) {
+      if (allRecords.length === 0) {
         document.getElementById('grid').innerHTML = '<div class="empty">' +
           (searchQuery ? 'No results for "' + searchQuery + '"' : 'No content yet') + '</div>';
         return;
@@ -585,7 +632,7 @@ function browsePage() {
 
       const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
 
-      document.getElementById('grid').innerHTML = filtered.map(r => \`
+      const html = allRecords.map(r => \`
         <div class="card" onclick="window.location.href='/lurl/view/\${r.id}'">
           <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
             \${r.fileExists
@@ -606,7 +653,19 @@ function browsePage() {
           </div>
         </div>
       \`).join('');
+
+      document.getElementById('grid').innerHTML = html;
     }
+
+    // 無限滾動
+    window.addEventListener('scroll', () => {
+      if (isLoading || !hasMore) return;
+      const scrollBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 500;
+      if (scrollBottom) {
+        currentPage++;
+        loadRecords(true);
+      }
+    });
 
     function copyId(id) {
       navigator.clipboard.writeText(id);
@@ -626,7 +685,7 @@ function browsePage() {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentType = tab.dataset.type;
-        renderGrid();
+        loadRecords(); // 重新從 server 載入
       });
     });
 
@@ -636,8 +695,8 @@ function browsePage() {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         searchQuery = e.target.value.trim();
-        renderGrid();
-      }, 200);
+        loadRecords(); // 重新從 server 載入
+      }, 300);
     });
 
     // URL param for search
@@ -1037,6 +1096,8 @@ module.exports = {
       let records = readAllRecords().reverse(); // 最新的在前
       const type = query.type;
       const q = query.q;
+      const page = parseInt(query.page) || 1;
+      const limit = parseInt(query.limit) || 50; // 預設每頁 50 筆
 
       // Type filter
       if (type && type !== 'all') {
@@ -1053,15 +1114,29 @@ module.exports = {
         );
       }
 
-      // 加入 fileExists 和 thumbnailExists 狀態
-      const recordsWithStatus = records.map(r => ({
+      const total = records.length;
+      const totalPages = Math.ceil(total / limit);
+
+      // 分頁
+      const start = (page - 1) * limit;
+      const paginatedRecords = records.slice(start, start + limit);
+
+      // 只對當前頁的記錄檢查 fileExists（大幅減少 I/O）
+      const recordsWithStatus = paginatedRecords.map(r => ({
         ...r,
         fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)),
         thumbnailExists: r.thumbnailPath ? fs.existsSync(path.join(DATA_DIR, r.thumbnailPath)) : false
       }));
 
       res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({ records: recordsWithStatus, total: recordsWithStatus.length }));
+      res.end(JSON.stringify({
+        records: recordsWithStatus,
+        total,
+        page,
+        limit,
+        totalPages,
+        hasMore: page < totalPages
+      }));
       return;
     }
 
