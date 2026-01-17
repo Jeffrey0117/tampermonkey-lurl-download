@@ -68,22 +68,14 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
 
     console.log(`[lurl-retry] 頁面載入完成，開始在頁面 context 下載: ${fileUrl}`);
 
-    // 從 URL 判斷檔案類型
-    const isVideo = /\.(mp4|mov|webm|avi)$/i.test(fileUrl);
-
-    // 在頁面 context 裡 fetch CDN 檔案（帶上正確的 headers）
-    const fileData = await page.evaluate(async (url, isVideoFile) => {
+    // 在頁面 context 裡 fetch CDN 檔案
+    // 重要：不帶 credentials，CDN 不支持（與腳本一致）
+    const fileData = await page.evaluate(async (url) => {
       try {
-        const response = await fetch(url, {
-          method: 'GET',
-          credentials: 'include',  // 帶 cookie
-          headers: {
-            'Accept': isVideoFile ? 'video/*,*/*' : 'image/*,*/*',
-            'Sec-Fetch-Dest': isVideoFile ? 'video' : 'image',
-            'Sec-Fetch-Mode': 'no-cors',
-            'Sec-Fetch-Site': 'same-site',
-          },
-        });
+        // 用最簡單的 fetch，與腳本 downloadAndUpload 一致
+        const response = await fetch(url);
+
+        console.log('[lurl-retry] fetch 回應:', response.status);
 
         if (!response.ok) {
           return { error: `HTTP ${response.status} - ${response.statusText}`, url };
@@ -105,7 +97,7 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
       } catch (err) {
         return { error: err.message };
       }
-    }, fileUrl, isVideo);
+    }, fileUrl);
 
     if (fileData.error) {
       console.error(`[lurl-retry] Fetch 錯誤: ${fileData.error} - URL: ${fileUrl}`);
