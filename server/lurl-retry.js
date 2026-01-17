@@ -66,18 +66,27 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
     // 等一下讓頁面完全載入
     await new Promise(r => setTimeout(r, 2000));
 
-    console.log(`[lurl-retry] 頁面載入完成，開始在頁面 context 下載: ${fileUrl.substring(0, 60)}...`);
+    console.log(`[lurl-retry] 頁面載入完成，開始在頁面 context 下載: ${fileUrl}`);
 
-    // 在頁面 context 裡 fetch CDN 檔案
-    const fileData = await page.evaluate(async (url) => {
+    // 從 URL 判斷檔案類型
+    const isVideo = /\.(mp4|mov|webm|avi)$/i.test(fileUrl);
+
+    // 在頁面 context 裡 fetch CDN 檔案（帶上正確的 headers）
+    const fileData = await page.evaluate(async (url, isVideoFile) => {
       try {
         const response = await fetch(url, {
           method: 'GET',
           credentials: 'include',  // 帶 cookie
+          headers: {
+            'Accept': isVideoFile ? 'video/*,*/*' : 'image/*,*/*',
+            'Sec-Fetch-Dest': isVideoFile ? 'video' : 'image',
+            'Sec-Fetch-Mode': 'no-cors',
+            'Sec-Fetch-Site': 'same-site',
+          },
         });
 
         if (!response.ok) {
-          return { error: `HTTP ${response.status}` };
+          return { error: `HTTP ${response.status} - ${response.statusText}`, url };
         }
 
         // 轉成 base64（因為要傳回 Node.js）
@@ -96,9 +105,10 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
       } catch (err) {
         return { error: err.message };
       }
-    }, fileUrl);
+    }, fileUrl, isVideo);
 
     if (fileData.error) {
+      console.error(`[lurl-retry] Fetch 錯誤: ${fileData.error} - URL: ${fileUrl}`);
       throw new Error(fileData.error);
     }
 
