@@ -24,8 +24,19 @@ const { pipeline } = require('stream/promises');
 // 資料存放位置
 const DATA_DIR = path.join(__dirname, '..', 'data', 'lurl');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.jsonl');
+const USERS_FILE = path.join(DATA_DIR, 'users.jsonl');
+const VIEWS_FILE = path.join(DATA_DIR, 'views.jsonl');
 const VIDEOS_DIR = path.join(DATA_DIR, 'videos');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
+
+// ==================== 會員系統常數 ====================
+const TIERS = {
+  visitor: { dailyLimit: 0, canSearch: false, canDownload: false },
+  free: { dailyLimit: 3, canSearch: true, canDownload: false },
+  contributor: { dailyLimit: -1, canSearch: true, canDownload: true }, // -1 = unlimited
+  vip: { dailyLimit: -1, canSearch: true, canDownload: true, noAds: true }
+};
+const CONTRIBUTOR_THRESHOLD = 10; // 貢獻 10+ 影片升級為 contributor
 
 // ==================== 工具函數 ====================
 
@@ -169,9 +180,175 @@ function corsHeaders(contentType = 'application/json') {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Record-Id, X-Chunk-Index, X-Total-Chunks',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Record-Id, X-Chunk-Index, X-Total-Chunks, Authorization',
     'Content-Type': contentType
   };
+}
+
+// ==================== 會員系統函數 ====================
+
+function generateToken() {
+  // 產生 32 字元的隨機 token
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 32; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+function readAllUsers() {
+  ensureDirs();
+  if (!fs.existsSync(USERS_FILE)) return [];
+  const content = fs.readFileSync(USERS_FILE, 'utf8');
+  return content.trim().split('\n').filter(Boolean).map(line => {
+    try { return JSON.parse(line); }
+    catch { return null; }
+  }).filter(Boolean);
+}
+
+function saveAllUsers(users) {
+  ensureDirs();
+  fs.writeFileSync(USERS_FILE, users.map(u => JSON.stringify(u)).join('\n') + '\n', 'utf8');
+}
+
+function findUserByToken(token) {
+  if (!token) return null;
+  const users = readAllUsers();
+  return users.find(u => u.token === token) || null;
+}
+
+function findUserByEmail(email) {
+  if (!email) return null;
+  const users = readAllUsers();
+  return users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+}
+
+function createUser(email) {
+  const users = readAllUsers();
+  const token = generateToken();
+  const user = {
+    id: 'user_' + Date.now().toString(36),
+    email,
+    token,
+    tier: 'free',
+    contributions: 0,
+    createdAt: new Date().toISOString(),
+    lastLoginAt: new Date().toISOString()
+  };
+  users.push(user);
+  saveAllUsers(users);
+  return user;
+}
+
+function updateUser(userId, updates) {
+  const users = readAllUsers();
+  const idx = users.findIndex(u => u.id === userId);
+  if (idx === -1) return null;
+  users[idx] = { ...users[idx], ...updates };
+  saveAllUsers(users);
+  return users[idx];
+}
+
+function incrementContribution(token) {
+  if (!token) return null;
+  const users = readAllUsers();
+  const idx = users.findIndex(u => u.token === token);
+  if (idx === -1) return null;
+
+  users[idx].contributions = (users[idx].contributions || 0) + 1;
+
+  // 自動升級為 contributor
+  if (users[idx].tier === 'free' && users[idx].contributions >= CONTRIBUTOR_THRESHOLD) {
+    users[idx].tier = 'contributor';
+    console.log(`[lurl] 用戶升級為 contributor: ${users[idx].email}`);
+  }
+
+  saveAllUsers(users);
+  return users[idx];
+}
+
+// 觀看記錄
+function readTodayViews() {
+  if (!fs.existsSync(VIEWS_FILE)) return {};
+  const content = fs.readFileSync(VIEWS_FILE, 'utf8');
+  try {
+    const data = JSON.parse(content);
+    const today = new Date().toISOString().split('T')[0];
+    // 如果是舊日期的資料，重置
+    if (data.date !== today) {
+      return { date: today, views: {} };
+    }
+    return data;
+  } catch {
+    return { date: new Date().toISOString().split('T')[0], views: {} };
+  }
+}
+
+function saveTodayViews(data) {
+  ensureDirs();
+  fs.writeFileSync(VIEWS_FILE, JSON.stringify(data), 'utf8');
+}
+
+function recordView(userId, recordId) {
+  const data = readTodayViews();
+  const today = new Date().toISOString().split('T')[0];
+
+  if (data.date !== today) {
+    data.date = today;
+    data.views = {};
+  }
+
+  if (!data.views[userId]) {
+    data.views[userId] = [];
+  }
+
+  // 不重複計算同一影片
+  if (!data.views[userId].includes(recordId)) {
+    data.views[userId].push(recordId);
+  }
+
+  saveTodayViews(data);
+  return data.views[userId].length;
+}
+
+function getTodayViewCount(userId) {
+  const data = readTodayViews();
+  const today = new Date().toISOString().split('T')[0];
+
+  if (data.date !== today) return 0;
+  return (data.views[userId] || []).length;
+}
+
+function canView(user, recordId) {
+  if (!user) {
+    // 訪客：不能看
+    return { allowed: false, reason: 'login_required' };
+  }
+
+  const tier = TIERS[user.tier] || TIERS.free;
+
+  // 無限制
+  if (tier.dailyLimit === -1) {
+    return { allowed: true };
+  }
+
+  const viewCount = getTodayViewCount(user.id);
+  if (viewCount >= tier.dailyLimit) {
+    return { allowed: false, reason: 'daily_limit', viewCount, limit: tier.dailyLimit };
+  }
+
+  return { allowed: true, viewCount, limit: tier.dailyLimit };
+}
+
+function getAuthToken(req) {
+  // 從 Authorization header 或 query string 取得 token
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    return auth.slice(7);
+  }
+  const query = parseQuery(req.url);
+  return query.token || null;
 }
 
 // ==================== HTML 頁面 ====================
@@ -679,7 +856,9 @@ function browsePage() {
         <input type="text" class="search-input" id="search" placeholder="Search videos by title, ID, or URL..." autocomplete="off">
       </div>
       <nav class="header-nav">
-        <a href="/lurl/admin" class="nav-btn">Admin</a>
+        <span id="userStatus" style="display:none;color:var(--text-secondary);font-size:0.85em;"></span>
+        <a href="/lurl/login" class="nav-btn" id="loginBtn">Login</a>
+        <a href="/lurl/admin" class="nav-btn" style="background:transparent;border:1px solid var(--border);">Admin</a>
       </nav>
     </div>
   </header>
@@ -865,7 +1044,31 @@ function browsePage() {
       searchQuery = qParam;
     }
 
+    // Check user auth
+    async function checkAuth() {
+      const token = localStorage.getItem('lurl_token');
+      if (!token) return;
+
+      try {
+        const res = await fetch('/lurl/api/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if (data.ok) {
+          const user = data.user;
+          document.getElementById('userStatus').textContent = user.tier === 'free'
+            ? user.email.split('@')[0] + ' (' + user.todayViews + '/' + user.dailyLimit + ' views)'
+            : user.email.split('@')[0] + ' (' + user.tier.toUpperCase() + ')';
+          document.getElementById('userStatus').style.display = 'inline';
+          document.getElementById('loginBtn').textContent = 'Account';
+        }
+      } catch (e) {
+        console.error('Auth check failed:', e);
+      }
+    }
+
     loadRecords();
+    checkAuth();
   </script>
 </body>
 </html>`;
@@ -1663,6 +1866,7 @@ function landingPage() {
         <a href="/lurl/browse" class="nav-link">Browse</a>
         <a href="#features" class="nav-link">Features</a>
         <a href="#how-it-works" class="nav-link">How It Works</a>
+        <a href="/lurl/login" class="nav-link">Login</a>
         <a href="/lurl/browse" class="nav-btn">Enter Library</a>
       </nav>
     </div>
@@ -1904,6 +2108,378 @@ function landingPage() {
 </html>`;
 }
 
+function loginPage() {
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Lurl Archive</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #111111;
+      --bg-card: #181818;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text-primary: #ffffff;
+      --text-secondary: #aaaaaa;
+      --text-muted: #666666;
+      --border: #2a2a2a;
+      --success: #22c55e;
+      --error: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 400px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 40px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+    .logo-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .logo span { font-size: 1.5em; font-weight: 700; }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .tab {
+      flex: 1;
+      padding: 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 0.95em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab:hover { border-color: var(--accent); }
+    .tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    .form-group { margin-bottom: 20px; }
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+      font-size: 0.9em;
+    }
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 1em;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .form-input:focus { border-color: var(--accent); }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 0.9em;
+      display: none;
+    }
+    .message.success { display: block; background: rgba(34,197,94,0.1); color: var(--success); border: 1px solid var(--success); }
+    .message.error { display: block; background: rgba(239,68,68,0.1); color: var(--error); border: 1px solid var(--error); }
+    .user-info {
+      text-align: center;
+      padding: 24px;
+    }
+    .user-avatar {
+      width: 64px;
+      height: 64px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin: 0 auto 16px;
+    }
+    .user-email { color: var(--text-secondary); margin-bottom: 8px; }
+    .user-tier {
+      display: inline-block;
+      padding: 4px 12px;
+      background: var(--accent);
+      border-radius: 16px;
+      font-size: 0.85em;
+      margin-bottom: 16px;
+    }
+    .user-stats {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin: 24px 0;
+      padding: 16px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-item { text-align: center; }
+    .stat-value { font-size: 1.5em; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: 0.8em; color: var(--text-muted); }
+    .token-box {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 16px;
+    }
+    .token-label { font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px; }
+    .token-value {
+      font-family: monospace;
+      font-size: 0.85em;
+      word-break: break-all;
+      color: var(--text-secondary);
+    }
+    .copy-btn {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: 0.85em;
+      cursor: pointer;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .logout-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      margin-top: 16px;
+    }
+    .logout-btn:hover { border-color: var(--error); color: var(--error); background: rgba(239,68,68,0.1); }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 24px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9em;
+    }
+    .back-link:hover { color: var(--text-primary); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/lurl" class="logo">
+      <div class="logo-icon">▶</div>
+      <span>Lurl Archive</span>
+    </a>
+
+    <div class="card" id="authCard">
+      <div class="tabs">
+        <button class="tab active" data-mode="login">Login</button>
+        <button class="tab" data-mode="register">Register</button>
+      </div>
+
+      <div class="message" id="message"></div>
+
+      <form id="authForm">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-input" id="email" placeholder="your@email.com" required>
+        </div>
+        <button type="submit" class="btn" id="submitBtn">Login</button>
+      </form>
+    </div>
+
+    <div class="card" id="userCard" style="display:none;">
+      <div class="user-info">
+        <div class="user-avatar">👤</div>
+        <div class="user-email" id="userEmail"></div>
+        <div class="user-tier" id="userTier"></div>
+
+        <div class="user-stats">
+          <div class="stat-item">
+            <div class="stat-value" id="userContributions">0</div>
+            <div class="stat-label">Contributions</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="userViews">0</div>
+            <div class="stat-label">Views Today</div>
+          </div>
+        </div>
+
+        <div class="token-box">
+          <div class="token-label">Your API Token (for Tampermonkey script)</div>
+          <div class="token-value" id="userToken"></div>
+          <button class="copy-btn" onclick="copyToken()">Copy Token</button>
+        </div>
+
+        <button class="btn logout-btn" onclick="logout()">Logout</button>
+      </div>
+    </div>
+
+    <a href="/lurl/browse" class="back-link">← Back to Browse</a>
+  </div>
+
+  <script>
+    let mode = 'login';
+    let currentUser = null;
+
+    // Check if already logged in
+    const savedToken = localStorage.getItem('lurl_token');
+    if (savedToken) {
+      checkAuth(savedToken);
+    }
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        mode = tab.dataset.mode;
+        document.getElementById('submitBtn').textContent = mode === 'login' ? 'Login' : 'Register';
+        hideMessage();
+      });
+    });
+
+    // Form submit
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const btn = document.getElementById('submitBtn');
+
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+
+      try {
+        const endpoint = mode === 'login' ? '/lurl/api/auth/login' : '/lurl/api/auth/register';
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          showMessage('success', mode === 'login' ? 'Login successful!' : 'Registration successful!');
+          localStorage.setItem('lurl_token', data.user.token);
+          currentUser = data.user;
+          setTimeout(() => showUserCard(), 1000);
+        } else {
+          showMessage('error', data.error || 'Something went wrong');
+        }
+      } catch (err) {
+        showMessage('error', 'Connection failed');
+      }
+
+      btn.disabled = false;
+      btn.textContent = mode === 'login' ? 'Login' : 'Register';
+    });
+
+    async function checkAuth(token) {
+      try {
+        const res = await fetch('/lurl/api/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if (data.ok) {
+          currentUser = { ...data.user, token };
+          showUserCard();
+        } else {
+          localStorage.removeItem('lurl_token');
+        }
+      } catch (err) {
+        localStorage.removeItem('lurl_token');
+      }
+    }
+
+    function showUserCard() {
+      document.getElementById('authCard').style.display = 'none';
+      document.getElementById('userCard').style.display = 'block';
+      document.getElementById('userEmail').textContent = currentUser.email;
+      document.getElementById('userTier').textContent = currentUser.tier.toUpperCase();
+      document.getElementById('userContributions').textContent = currentUser.contributions || 0;
+      document.getElementById('userViews').textContent = currentUser.todayViews || 0;
+      document.getElementById('userToken').textContent = currentUser.token;
+    }
+
+    function copyToken() {
+      navigator.clipboard.writeText(currentUser.token);
+      showMessage('success', 'Token copied!');
+      setTimeout(hideMessage, 2000);
+    }
+
+    function logout() {
+      localStorage.removeItem('lurl_token');
+      currentUser = null;
+      document.getElementById('authCard').style.display = 'block';
+      document.getElementById('userCard').style.display = 'none';
+      document.getElementById('email').value = '';
+    }
+
+    function showMessage(type, text) {
+      const msg = document.getElementById('message');
+      msg.className = 'message ' + type;
+      msg.textContent = text;
+    }
+
+    function hideMessage() {
+      document.getElementById('message').className = 'message';
+    }
+  </script>
+</body>
+</html>`;
+}
+
 // ==================== 主處理器 ====================
 
 module.exports = {
@@ -1925,19 +2501,155 @@ module.exports = {
       return;
     }
 
+    // ==================== Auth API ====================
+
+    // POST /api/auth/register - 註冊新用戶
+    if (req.method === 'POST' && urlPath === '/api/auth/register') {
+      try {
+        const { email } = await parseBody(req);
+
+        if (!email || !email.includes('@')) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: 'Invalid email' }));
+          return;
+        }
+
+        // 檢查是否已存在
+        const existing = findUserByEmail(email);
+        if (existing) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: 'Email already registered' }));
+          return;
+        }
+
+        const user = createUser(email);
+        console.log(`[lurl] 新用戶註冊: ${email}`);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            tier: user.tier,
+            contributions: user.contributions,
+            token: user.token
+          }
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/auth/login - 登入（用 email 取得 token）
+    if (req.method === 'POST' && urlPath === '/api/auth/login') {
+      try {
+        const { email } = await parseBody(req);
+
+        if (!email) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: 'Email required' }));
+          return;
+        }
+
+        const user = findUserByEmail(email);
+        if (!user) {
+          res.writeHead(404, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: 'User not found' }));
+          return;
+        }
+
+        // 更新最後登入時間
+        updateUser(user.id, { lastLoginAt: new Date().toISOString() });
+        console.log(`[lurl] 用戶登入: ${email}`);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            tier: user.tier,
+            contributions: user.contributions,
+            token: user.token
+          }
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/auth/me - 取得目前用戶資料
+    if (req.method === 'GET' && urlPath === '/api/auth/me') {
+      const token = getAuthToken(req);
+      if (!token) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'No token provided' }));
+        return;
+      }
+
+      const user = findUserByToken(token);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Invalid token' }));
+        return;
+      }
+
+      const viewCount = getTodayViewCount(user.id);
+      const tier = TIERS[user.tier] || TIERS.free;
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          tier: user.tier,
+          contributions: user.contributions,
+          todayViews: viewCount,
+          dailyLimit: tier.dailyLimit,
+          canDownload: tier.canDownload,
+          noAds: tier.noAds || false
+        }
+      }));
+      return;
+    }
+
+    // GET /api/users - 取得所有用戶（管理用）
+    if (req.method === 'GET' && urlPath === '/api/users') {
+      const users = readAllUsers();
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        users: users.map(u => ({
+          id: u.id,
+          email: u.email,
+          tier: u.tier,
+          contributions: u.contributions,
+          createdAt: u.createdAt,
+          lastLoginAt: u.lastLoginAt
+        })),
+        total: users.length
+      }));
+      return;
+    }
+
     // ==================== Phase 1 ====================
 
     // GET /health
     if (req.method === 'GET' && urlPath === '/health') {
       res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({ status: 'ok', version: 'v3-fixed', timestamp: new Date().toISOString() }));
+      res.end(JSON.stringify({ status: 'ok', version: 'v4-auth', timestamp: new Date().toISOString() }));
       return;
     }
 
     // POST /capture
     if (req.method === 'POST' && urlPath === '/capture') {
       try {
-        const { title, pageUrl, fileUrl, type = 'video', ref, cookies } = await parseBody(req);
+        const { title, pageUrl, fileUrl, type = 'video', ref, cookies, contributorToken } = await parseBody(req);
 
         if (!title || !pageUrl || !fileUrl) {
           res.writeHead(400, corsHeaders());
@@ -1985,6 +2697,15 @@ module.exports = {
         const folder = type === 'video' ? 'videos' : 'images';
         const backupPath = `${folder}/${filename}`; // 用正斜線，URL 才正確
 
+        // 取得貢獻者資訊
+        let contributorId = null;
+        if (contributorToken) {
+          const contributor = findUserByToken(contributorToken);
+          if (contributor) {
+            contributorId = contributor.id;
+          }
+        }
+
         const record = {
           id,
           title,
@@ -1994,11 +2715,13 @@ module.exports = {
           source: 'lurl',
           capturedAt: new Date().toISOString(),
           backupPath,
-          ...(ref && { ref }) // D卡文章連結（如果有）
+          ...(ref && { ref }), // D卡文章連結（如果有）
+          ...(contributorId && { contributorId }),
+          ...(contributorToken && { contributorToken }) // 用於後續上傳時追蹤
         };
 
         appendRecord(record);
-        console.log(`[lurl] 記錄已存: ${title}`);
+        console.log(`[lurl] 記錄已存: ${title}${contributorId ? ` (by ${contributorId})` : ''}`);
 
         // 後端用 cookies 嘗試下載（可能會失敗，但前端會補上傳）
         downloadFile(fileUrl, path.join(targetDir, filename), pageUrl, cookies || '').then(ok => {
@@ -2086,6 +2809,14 @@ module.exports = {
             fs.rmSync(chunkDir, { recursive: true });
 
             console.log(`[lurl] 分塊上傳完成: ${filename} (${(finalBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+
+            // 追蹤貢獻
+            if (record.contributorToken) {
+              const updated = incrementContribution(record.contributorToken);
+              if (updated) {
+                console.log(`[lurl] 貢獻 +1: ${updated.email} (總計 ${updated.contributions})`);
+              }
+            }
           }
 
           res.writeHead(200, corsHeaders());
@@ -2094,6 +2825,14 @@ module.exports = {
           // 單次上傳（小檔案）
           fs.writeFileSync(destPath, buffer);
           console.log(`[lurl] 前端上傳成功: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+
+          // 追蹤貢獻
+          if (record.contributorToken) {
+            const updated = incrementContribution(record.contributorToken);
+            if (updated) {
+              console.log(`[lurl] 貢獻 +1: ${updated.email} (總計 ${updated.contributions})`);
+            }
+          }
 
           res.writeHead(200, corsHeaders());
           res.end(JSON.stringify({ ok: true, size: buffer.length }));
@@ -2209,6 +2948,13 @@ module.exports = {
     if (req.method === 'GET' && urlPath === '/browse') {
       res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
       res.end(browsePage());
+      return;
+    }
+
+    // GET /login
+    if (req.method === 'GET' && urlPath === '/login') {
+      res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
+      res.end(loginPage());
       return;
     }
 
