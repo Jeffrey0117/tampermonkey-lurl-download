@@ -1353,72 +1353,6 @@ function viewPage(record, fileExists) {
     }
     .toast.show { opacity: 1; transform: translateY(0); }
 
-    /* Ad Overlay */
-    .ad-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
-    }
-    .ad-overlay.hidden { display: none; }
-    .ad-content {
-      text-align: center;
-      padding: 40px;
-    }
-    .ad-logo {
-      font-size: 64px;
-      margin-bottom: 20px;
-    }
-    .ad-title {
-      font-size: 1.5em;
-      font-weight: 600;
-      margin-bottom: 12px;
-    }
-    .ad-subtitle {
-      color: var(--text-secondary);
-      margin-bottom: 24px;
-    }
-    .ad-cta {
-      display: inline-block;
-      background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
-      color: white;
-      padding: 12px 32px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: 500;
-      margin-bottom: 24px;
-      transition: transform 0.2s;
-    }
-    .ad-cta:hover { transform: scale(1.05); }
-    .ad-countdown {
-      background: rgba(0,0,0,0.3);
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 0.9em;
-      color: var(--text-secondary);
-    }
-    .ad-countdown span { color: var(--accent); font-weight: 600; }
-    .ad-skip {
-      display: none;
-      background: var(--accent);
-      color: white;
-      border: none;
-      padding: 10px 24px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.95em;
-      transition: background 0.2s;
-    }
-    .ad-skip:hover { background: var(--accent-hover); }
-    .ad-skip.visible { display: inline-block; }
-    .player-container { position: relative; }
   </style>
 </head>
 <body>
@@ -1436,20 +1370,9 @@ function viewPage(record, fileExists) {
     <a href="/lurl/browse" class="back-link">← Back to library</a>
 
     <div class="player-container">
-      <!-- Ad Overlay -->
-      <div class="ad-overlay" id="adOverlay">
-        <div class="ad-content">
-          <div class="ad-logo">🎬</div>
-          <div class="ad-title">Lurl Archive</div>
-          <div class="ad-subtitle">永久保存您喜愛的影片</div>
-          <a href="/lurl/pricing" class="ad-cta">升級 VIP 無廣告</a>
-          <div class="ad-countdown" id="adCountdown">影片將在 <span id="countdown">5</span> 秒後播放</div>
-          <button class="ad-skip" id="adSkip" onclick="skipAd()">跳過廣告</button>
-        </div>
-      </div>
       ${fileExists
         ? (isVideo
-          ? `<video src="/lurl/files/${record.backupPath}" controls id="mainVideo"></video>`
+          ? `<video src="/lurl/files/${record.backupPath}" controls autoplay></video>`
           : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`)
         : `<div class="player-missing">
             <div class="player-missing-icon">⏳</div>
@@ -1530,76 +1453,6 @@ function viewPage(record, fileExists) {
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2000);
     }
-
-    // Ad system
-    let adCountdown = 5;
-    let adInterval;
-    const isVideo = ${isVideo};
-    const fileExists = ${fileExists};
-
-    async function checkUserTier() {
-      const token = localStorage.getItem('lurl_token');
-      if (!token) return 'visitor';
-
-      try {
-        const res = await fetch('/lurl/api/auth/me', {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await res.json();
-        if (data.ok) return data.user.tier;
-      } catch (e) {
-        console.error('Auth check failed:', e);
-      }
-      return 'visitor';
-    }
-
-    function skipAd() {
-      clearInterval(adInterval);
-      document.getElementById('adOverlay').classList.add('hidden');
-      if (isVideo && fileExists) {
-        const video = document.getElementById('mainVideo');
-        if (video) video.play();
-      }
-    }
-
-    function startAdCountdown() {
-      const countdownEl = document.getElementById('countdown');
-      const skipBtn = document.getElementById('adSkip');
-
-      adInterval = setInterval(() => {
-        adCountdown--;
-        countdownEl.textContent = adCountdown;
-
-        if (adCountdown <= 0) {
-          clearInterval(adInterval);
-          skipBtn.classList.add('visible');
-          document.getElementById('adCountdown').textContent = '廣告結束';
-          setTimeout(skipAd, 500);
-        }
-      }, 1000);
-    }
-
-    async function initAd() {
-      const adOverlay = document.getElementById('adOverlay');
-      if (!fileExists || !isVideo) {
-        adOverlay.classList.add('hidden');
-        return;
-      }
-
-      const tier = await checkUserTier();
-      // VIP and contributors don't see ads
-      if (tier === 'vip' || tier === 'contributor') {
-        adOverlay.classList.add('hidden');
-        const video = document.getElementById('mainVideo');
-        if (video) video.play();
-        return;
-      }
-
-      // Show ad for free users and visitors
-      startAdCountdown();
-    }
-
-    initAd();
   </script>
 </body>
 </html>`;
