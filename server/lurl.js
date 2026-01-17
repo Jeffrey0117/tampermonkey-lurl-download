@@ -37,6 +37,13 @@ const TIERS = {
   vip: { dailyLimit: -1, canSearch: true, canDownload: true, noAds: true }
 };
 const CONTRIBUTOR_THRESHOLD = 10; // 貢獻 10+ 影片升級為 contributor
+const VIP_PRICE = 99; // NT$ per month
+const VIP_PRICE_YEARLY = 990; // NT$ per year (save 2 months)
+
+// Stripe 設定 (production 時填入真實 key)
+const STRIPE_MODE = 'mock'; // 'mock' | 'live'
+const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_mock';
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_mock';
 
 // ==================== 工具函數 ====================
 
@@ -1345,6 +1352,73 @@ function viewPage(record, fileExists) {
       z-index: 1000;
     }
     .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* Ad Overlay */
+    .ad-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .ad-overlay.hidden { display: none; }
+    .ad-content {
+      text-align: center;
+      padding: 40px;
+    }
+    .ad-logo {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+    .ad-title {
+      font-size: 1.5em;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .ad-subtitle {
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+    .ad-cta {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+      color: white;
+      padding: 12px 32px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      margin-bottom: 24px;
+      transition: transform 0.2s;
+    }
+    .ad-cta:hover { transform: scale(1.05); }
+    .ad-countdown {
+      background: rgba(0,0,0,0.3);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.9em;
+      color: var(--text-secondary);
+    }
+    .ad-countdown span { color: var(--accent); font-weight: 600; }
+    .ad-skip {
+      display: none;
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95em;
+      transition: background 0.2s;
+    }
+    .ad-skip:hover { background: var(--accent-hover); }
+    .ad-skip.visible { display: inline-block; }
+    .player-container { position: relative; }
   </style>
 </head>
 <body>
@@ -1362,9 +1436,20 @@ function viewPage(record, fileExists) {
     <a href="/lurl/browse" class="back-link">← Back to library</a>
 
     <div class="player-container">
+      <!-- Ad Overlay -->
+      <div class="ad-overlay" id="adOverlay">
+        <div class="ad-content">
+          <div class="ad-logo">🎬</div>
+          <div class="ad-title">Lurl Archive</div>
+          <div class="ad-subtitle">永久保存您喜愛的影片</div>
+          <a href="/lurl/pricing" class="ad-cta">升級 VIP 無廣告</a>
+          <div class="ad-countdown" id="adCountdown">影片將在 <span id="countdown">5</span> 秒後播放</div>
+          <button class="ad-skip" id="adSkip" onclick="skipAd()">跳過廣告</button>
+        </div>
+      </div>
       ${fileExists
         ? (isVideo
-          ? `<video src="/lurl/files/${record.backupPath}" controls autoplay></video>`
+          ? `<video src="/lurl/files/${record.backupPath}" controls id="mainVideo"></video>`
           : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`)
         : `<div class="player-missing">
             <div class="player-missing-icon">⏳</div>
@@ -1445,6 +1530,76 @@ function viewPage(record, fileExists) {
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2000);
     }
+
+    // Ad system
+    let adCountdown = 5;
+    let adInterval;
+    const isVideo = ${isVideo};
+    const fileExists = ${fileExists};
+
+    async function checkUserTier() {
+      const token = localStorage.getItem('lurl_token');
+      if (!token) return 'visitor';
+
+      try {
+        const res = await fetch('/lurl/api/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if (data.ok) return data.user.tier;
+      } catch (e) {
+        console.error('Auth check failed:', e);
+      }
+      return 'visitor';
+    }
+
+    function skipAd() {
+      clearInterval(adInterval);
+      document.getElementById('adOverlay').classList.add('hidden');
+      if (isVideo && fileExists) {
+        const video = document.getElementById('mainVideo');
+        if (video) video.play();
+      }
+    }
+
+    function startAdCountdown() {
+      const countdownEl = document.getElementById('countdown');
+      const skipBtn = document.getElementById('adSkip');
+
+      adInterval = setInterval(() => {
+        adCountdown--;
+        countdownEl.textContent = adCountdown;
+
+        if (adCountdown <= 0) {
+          clearInterval(adInterval);
+          skipBtn.classList.add('visible');
+          document.getElementById('adCountdown').textContent = '廣告結束';
+          setTimeout(skipAd, 500);
+        }
+      }, 1000);
+    }
+
+    async function initAd() {
+      const adOverlay = document.getElementById('adOverlay');
+      if (!fileExists || !isVideo) {
+        adOverlay.classList.add('hidden');
+        return;
+      }
+
+      const tier = await checkUserTier();
+      // VIP and contributors don't see ads
+      if (tier === 'vip' || tier === 'contributor') {
+        adOverlay.classList.add('hidden');
+        const video = document.getElementById('mainVideo');
+        if (video) video.play();
+        return;
+      }
+
+      // Show ad for free users and visitors
+      startAdCountdown();
+    }
+
+    initAd();
   </script>
 </body>
 </html>`;
@@ -2480,6 +2635,340 @@ function loginPage() {
 </html>`;
 }
 
+function pricingPage() {
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upgrade to VIP - Lurl Archive</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #111111;
+      --bg-card: #181818;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --purple: #8b5cf6;
+      --gold: #f59e0b;
+      --text-primary: #ffffff;
+      --text-secondary: #aaaaaa;
+      --text-muted: #666666;
+      --border: #2a2a2a;
+      --success: #22c55e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+    .logo-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .logo span { font-size: 1.5em; font-weight: 700; }
+    .title { font-size: 2.5em; font-weight: 800; margin-bottom: 16px; }
+    .subtitle { color: var(--text-secondary); font-size: 1.1em; }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+    .plan {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      position: relative;
+      transition: all 0.3s;
+    }
+    .plan:hover { border-color: var(--accent); transform: translateY(-4px); }
+    .plan.featured {
+      border-color: var(--gold);
+      background: linear-gradient(135deg, rgba(245,158,11,0.1) 0%, var(--bg-card) 50%);
+    }
+    .plan-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--gold);
+      color: #000;
+      padding: 4px 16px;
+      border-radius: 16px;
+      font-size: 0.8em;
+      font-weight: 600;
+    }
+    .plan-name { font-size: 1.5em; font-weight: 700; margin-bottom: 8px; }
+    .plan-price {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .price-currency { font-size: 1.2em; color: var(--text-secondary); }
+    .price-amount { font-size: 3em; font-weight: 800; }
+    .price-period { color: var(--text-muted); }
+    .plan-desc { color: var(--text-secondary); margin-bottom: 24px; font-size: 0.9em; }
+    .plan-features { list-style: none; margin-bottom: 24px; }
+    .plan-features li {
+      padding: 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+    }
+    .plan-features li::before {
+      content: '✓';
+      color: var(--success);
+      font-weight: bold;
+    }
+    .plan-features li.disabled {
+      color: var(--text-muted);
+      text-decoration: line-through;
+    }
+    .plan-features li.disabled::before { content: '×'; color: var(--text-muted); }
+    .plan-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+    }
+    .plan-btn.primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      color: white;
+    }
+    .plan-btn.primary:hover { transform: scale(1.02); }
+    .plan-btn.secondary {
+      background: var(--bg-primary);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+    .plan-btn.gold {
+      background: linear-gradient(135deg, var(--gold) 0%, #d97706 100%);
+      color: #000;
+    }
+    .plan-btn.gold:hover { transform: scale(1.02); }
+
+    .faq {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+    .faq-title { font-size: 1.5em; margin-bottom: 24px; }
+    .faq-item { padding: 16px 0; border-bottom: 1px solid var(--border); }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-q { font-weight: 600; margin-bottom: 8px; }
+    .faq-a { color: var(--text-secondary); font-size: 0.95em; }
+
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 32px;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .back-link:hover { color: var(--text-primary); }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal.show { display: flex; }
+    .modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+    }
+    .modal-icon { font-size: 48px; margin-bottom: 16px; }
+    .modal-title { font-size: 1.5em; margin-bottom: 12px; }
+    .modal-desc { color: var(--text-secondary); margin-bottom: 24px; }
+    .modal-btn {
+      padding: 12px 32px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+
+    @media (max-width: 600px) {
+      .title { font-size: 1.75em; }
+      .price-amount { font-size: 2.5em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/lurl" class="logo">
+        <div class="logo-icon">▶</div>
+        <span>Lurl Archive</span>
+      </a>
+      <h1 class="title">Upgrade to VIP</h1>
+      <p class="subtitle">Unlock unlimited access and premium features</p>
+    </div>
+
+    <div class="pricing-grid">
+      <div class="plan">
+        <h2 class="plan-name">Free</h2>
+        <div class="plan-price">
+          <span class="price-currency">NT$</span>
+          <span class="price-amount">0</span>
+        </div>
+        <p class="plan-desc">Get started with basic access</p>
+        <ul class="plan-features">
+          <li>3 videos per day</li>
+          <li>Search functionality</li>
+          <li class="disabled">Download videos</li>
+          <li class="disabled">No ads</li>
+          <li class="disabled">API access</li>
+        </ul>
+        <a href="/lurl/login" class="plan-btn secondary">Current Plan</a>
+      </div>
+
+      <div class="plan">
+        <h2 class="plan-name">Contributor</h2>
+        <div class="plan-price">
+          <span class="price-currency">NT$</span>
+          <span class="price-amount">0</span>
+        </div>
+        <p class="plan-desc">Contribute 10+ videos to unlock</p>
+        <ul class="plan-features">
+          <li>Unlimited videos</li>
+          <li>Search functionality</li>
+          <li>Download videos</li>
+          <li class="disabled">No ads</li>
+          <li class="disabled">API access</li>
+        </ul>
+        <a href="/lurl" class="plan-btn secondary">Install Script</a>
+      </div>
+
+      <div class="plan featured">
+        <span class="plan-badge">BEST VALUE</span>
+        <h2 class="plan-name">VIP</h2>
+        <div class="plan-price">
+          <span class="price-currency">NT$</span>
+          <span class="price-amount">${VIP_PRICE}</span>
+          <span class="price-period">/month</span>
+        </div>
+        <p class="plan-desc">Full access with all premium features</p>
+        <ul class="plan-features">
+          <li>Unlimited videos</li>
+          <li>Search functionality</li>
+          <li>Download videos</li>
+          <li>No ads</li>
+          <li>API access</li>
+          <li>Priority support</li>
+        </ul>
+        <button class="plan-btn gold" onclick="subscribe('monthly')">Subscribe Now</button>
+      </div>
+    </div>
+
+    <div class="faq">
+      <h2 class="faq-title">Frequently Asked Questions</h2>
+      <div class="faq-item">
+        <div class="faq-q">How do I become a Contributor?</div>
+        <div class="faq-a">Install our Tampermonkey script and browse lurl.cc as usual. After your script backs up 10+ videos, you'll automatically be upgraded to Contributor status.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">What payment methods do you accept?</div>
+        <div class="faq-a">We accept all major credit cards through Stripe. You can also use Apple Pay and Google Pay.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Can I cancel anytime?</div>
+        <div class="faq-a">Yes! You can cancel your VIP subscription at any time. Your access will continue until the end of your billing period.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Is my payment information secure?</div>
+        <div class="faq-a">Absolutely. We use Stripe for payment processing and never store your card details on our servers.</div>
+      </div>
+    </div>
+
+    <a href="/lurl/browse" class="back-link">← Back to Browse</a>
+  </div>
+
+  <div class="modal" id="paymentModal">
+    <div class="modal-content">
+      <div class="modal-icon">💳</div>
+      <h3 class="modal-title">Payment Coming Soon</h3>
+      <p class="modal-desc">Stripe integration is being set up. For now, contribute videos to get free unlimited access!</p>
+      <button class="modal-btn" onclick="closeModal()">Got it</button>
+    </div>
+  </div>
+
+  <script>
+    function subscribe(plan) {
+      // Check if user is logged in
+      const token = localStorage.getItem('lurl_token');
+      if (!token) {
+        alert('Please login first');
+        window.location.href = '/lurl/login';
+        return;
+      }
+
+      // Show modal for now (Stripe not configured)
+      document.getElementById('paymentModal').classList.add('show');
+
+      // When Stripe is configured, uncomment:
+      // window.location.href = '/lurl/api/payment/checkout?plan=' + plan;
+    }
+
+    function closeModal() {
+      document.getElementById('paymentModal').classList.remove('show');
+    }
+  </script>
+</body>
+</html>`;
+}
+
 // ==================== 主處理器 ====================
 
 module.exports = {
@@ -2955,6 +3444,13 @@ module.exports = {
     if (req.method === 'GET' && urlPath === '/login') {
       res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
       res.end(loginPage());
+      return;
+    }
+
+    // GET /pricing
+    if (req.method === 'GET' && urlPath === '/pricing') {
+      res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
+      res.end(pricingPage());
       return;
     }
 
