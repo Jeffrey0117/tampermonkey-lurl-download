@@ -791,6 +791,15 @@
             color: #3b82f6;
             font-size: 14px;
           }
+          .lurlhub-quota.exhausted {
+            background: rgba(239,68,68,0.2);
+            color: #ef4444;
+          }
+          .lurlhub-quota-warning {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 5px;
+          }
           .lurlhub-actions {
             display: flex;
             gap: 10px;
@@ -833,13 +842,14 @@
             好消息！我們有此內容的備份。<br>
             使用修復服務即可觀看。
           </div>
-          <div class="lurlhub-quota">
+          <div class="lurlhub-quota ${quota.remaining <= 0 ? 'exhausted' : ''}">
             剩餘額度：<strong>${quota.remaining}</strong> / ${quota.total} 次
+            ${quota.remaining <= 0 ? '<div class="lurlhub-quota-warning">額度已用完</div>' : ''}
           </div>
           <div class="lurlhub-actions">
             <button class="lurlhub-btn lurlhub-btn-cancel" id="lurlhub-cancel">取消</button>
-            <button class="lurlhub-btn lurlhub-btn-confirm" id="lurlhub-confirm" ${quota.remaining <= 0 ? 'disabled' : ''}>
-              ${quota.remaining > 0 ? '使用修復（-1 額度）' : '額度不足'}
+            <button class="lurlhub-btn lurlhub-btn-confirm" id="lurlhub-confirm">
+              ${quota.remaining > 0 ? '使用修復（-1 額度）' : '充值'}
             </button>
           </div>
         </div>
@@ -856,6 +866,9 @@
         if (quota.remaining > 0) {
           modal.remove();
           if (onConfirm) onConfirm();
+        } else {
+          // 充值功能（之後實作）
+          Utils.showToast('💰 充值功能開發中，敬請期待', 'info');
         }
       };
 
