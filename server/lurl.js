@@ -316,160 +316,444 @@ function browsePage() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lurl Archive</title>
+  <title>Lurl Archive - Video Library</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-    .header h1 { font-size: 1.3em; }
-    .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
-    .header nav a:hover, .header nav a.active { color: white; }
-    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-
-    /* Search Bar */
-    .search-bar { margin-bottom: 20px; }
-    .search-bar input {
-      width: 100%;
-      max-width: 500px;
-      padding: 12px 16px;
-      border: none;
-      border-radius: 8px;
-      background: #1a1a1a;
-      color: white;
-      font-size: 1em;
-      outline: none;
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #111111;
+      --bg-card: #181818;
+      --bg-hover: #252525;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text-primary: #ffffff;
+      --text-secondary: #aaaaaa;
+      --text-muted: #666666;
+      --border: #2a2a2a;
+      --success: #22c55e;
+      --warning: #f59e0b;
     }
-    .search-bar input::placeholder { color: #666; }
-    .search-bar input:focus { box-shadow: 0 0 0 2px #3b82f6; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
 
-    /* Filter Bar */
-    .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
-    .tabs { display: flex; gap: 10px; }
-    .tab { padding: 8px 16px; background: #333; border: none; border-radius: 20px; color: white; cursor: pointer; transition: all 0.2s; }
-    .tab:hover { background: #444; }
-    .tab.active { background: #3b82f6; color: #fff; }
-    .result-count { margin-left: auto; color: #666; font-size: 0.9em; }
-
-    /* Grid */
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-    .card { background: #1a1a1a; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
-    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
-
-    /* Thumbnail - No video preload! */
-    .card-thumb {
-      aspect-ratio: 16/9;
-      background: linear-gradient(135deg, #1e3a5f 0%, #0f1a2e 100%);
+    /* Header */
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 1.25em;
+    }
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 48px;
+      font-size: 20px;
+    }
+    .search-container {
+      flex: 1;
+      max-width: 600px;
       position: relative;
     }
-    .card-thumb .play-icon {
-      width: 60px;
-      height: 60px;
-      background: rgba(255,255,255,0.15);
+    .search-input {
+      width: 100%;
+      padding: 10px 16px 10px 42px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 0.95em;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .search-input::placeholder { color: var(--text-muted); }
+    .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+    .header-nav {
+      display: flex;
+      gap: 8px;
+    }
+    .nav-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.9em;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .nav-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    /* Stats Bar */
+    .stats-bar {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+    }
+    .stats-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .stat-value {
+      font-size: 1.5em;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-label { color: var(--text-muted); font-size: 0.85em; }
+
+    /* Main Content */
+    .main {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .tabs { display: flex; gap: 8px; }
+    .tab {
+      padding: 8px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.9em;
+      transition: all 0.2s;
+    }
+    .tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    .result-info {
+      margin-left: auto;
+      color: var(--text-muted);
+      font-size: 0.9em;
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 24px;
+    }
+
+    /* Card */
+    .card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 1px solid transparent;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      border-color: var(--border);
+    }
+
+    /* Thumbnail */
+    .thumb {
+      aspect-ratio: 16/9;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .thumb.image-type { background: linear-gradient(135deg, #2d1f3d 0%, #1a1a2e 100%); }
+    .thumb.pending { background: linear-gradient(135deg, #2d2a1a 0%, #1a1a1a 100%); }
+    .thumb-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.2);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .card:hover .thumb-overlay { opacity: 1; }
+    .play-btn {
+      width: 64px;
+      height: 64px;
+      background: rgba(255,255,255,0.95);
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      backdrop-filter: blur(4px);
-      transition: all 0.2s;
+      transform: scale(0.8);
+      transition: transform 0.3s;
     }
-    .card:hover .card-thumb .play-icon { background: rgba(59,130,246,0.8); transform: scale(1.1); }
-    .card-thumb .play-icon::after {
+    .card:hover .play-btn { transform: scale(1); }
+    .play-btn::after {
       content: '';
       width: 0;
       height: 0;
-      border-left: 18px solid white;
-      border-top: 11px solid transparent;
-      border-bottom: 11px solid transparent;
+      border-left: 22px solid #0a0a0a;
+      border-top: 13px solid transparent;
+      border-bottom: 13px solid transparent;
       margin-left: 4px;
     }
-    .card-thumb.pending { background: linear-gradient(135deg, #3d2a1a 0%, #1a1a1a 100%); }
-    .card-thumb.image { background: linear-gradient(135deg, #2d1a3d 0%, #1a1a2e 100%); }
-
-    /* Card Info */
-    .card-info { padding: 12px; }
-    .card-title { font-size: 0.95em; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
-    .card-meta { display: flex; justify-content: space-between; align-items: center; }
-    .card-date { font-size: 0.8em; color: #666; }
-    .card-id {
-      font-size: 0.75em;
-      color: #3b82f6;
-      background: rgba(59,130,246,0.1);
+    .thumb-badge {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.8);
+      color: white;
       padding: 2px 8px;
       border-radius: 4px;
+      font-size: 0.75em;
+      font-weight: 500;
+    }
+    .thumb-pending {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.9em;
+    }
+
+    /* Card Info */
+    .card-body { padding: 16px; }
+    .card-title {
+      font-size: 1em;
+      font-weight: 500;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-date {
+      font-size: 0.8em;
+      color: var(--text-muted);
+    }
+    .card-id {
+      font-size: 0.75em;
+      color: var(--accent);
+      background: rgba(59,130,246,0.1);
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: monospace;
+    }
+    .card-id:hover { background: rgba(59,130,246,0.25); }
+    .card-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75em;
+      color: var(--warning);
+      margin-top: 8px;
+    }
+
+    /* Load More */
+    .load-more-container {
+      text-align: center;
+      padding: 40px 0;
+    }
+    .load-more-btn {
+      padding: 12px 32px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.95em;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .card-id:hover { background: rgba(59,130,246,0.3); }
-    .card-status { font-size: 0.75em; color: #f59e0b; margin-top: 4px; }
+    .load-more-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+    .load-more-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .empty { text-align: center; padding: 60px; color: #666; }
+    /* Empty State */
+    .empty {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+    }
+    .empty-icon { font-size: 64px; margin-bottom: 16px; }
+    .empty-text { font-size: 1.1em; }
 
     /* Toast */
     .toast {
       position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: #333;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       color: white;
       padding: 12px 20px;
       border-radius: 8px;
       opacity: 0;
-      transition: opacity 0.3s;
+      transform: translateY(10px);
+      transition: all 0.3s;
       z-index: 1000;
     }
-    .toast.show { opacity: 1; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header-inner { padding: 12px 16px; gap: 12px; }
+      .logo span { display: none; }
+      .search-container { max-width: none; }
+      .header-nav { display: none; }
+      .stats-bar { padding: 12px 16px; }
+      .stats-inner { gap: 16px; }
+      .stat-value { font-size: 1.2em; }
+      .main { padding: 16px; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>Lurl Archive</h1>
-    <nav>
-      <a href="/lurl/admin">Admin</a>
-      <a href="/lurl/browse" class="active">Browse</a>
-    </nav>
-  </div>
-  <div class="container">
-    <div class="search-bar">
-      <input type="text" id="search" placeholder="Search by title, ID, or URL (e.g. n41Xm, mkhev)..." autocomplete="off">
+  <header class="header">
+    <div class="header-inner">
+      <a href="/lurl" class="logo">
+        <div class="logo-icon">▶</div>
+        <span>Lurl Archive</span>
+      </a>
+      <div class="search-container">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="search" placeholder="Search videos by title, ID, or URL..." autocomplete="off">
+      </div>
+      <nav class="header-nav">
+        <a href="/lurl/admin" class="nav-btn">Admin</a>
+      </nav>
     </div>
+  </header>
+
+  <div class="stats-bar">
+    <div class="stats-inner">
+      <div class="stat-item">
+        <span class="stat-value" id="statTotal">-</span>
+        <span class="stat-label">Total</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="statVideos">-</span>
+        <span class="stat-label">Videos</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="statImages">-</span>
+        <span class="stat-label">Images</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="statBacked">-</span>
+        <span class="stat-label">Backed Up</span>
+      </div>
+    </div>
+  </div>
+
+  <main class="main">
     <div class="filter-bar">
       <div class="tabs">
         <button class="tab active" data-type="all">All</button>
         <button class="tab" data-type="video">Videos</button>
         <button class="tab" data-type="image">Images</button>
       </div>
-      <div class="result-count" id="resultCount"></div>
+      <div class="result-info" id="resultInfo"></div>
     </div>
+
     <div class="grid" id="grid"></div>
-  </div>
+
+    <div class="load-more-container" id="loadMoreContainer" style="display:none;">
+      <button class="load-more-btn" id="loadMoreBtn">Load More</button>
+    </div>
+  </main>
+
   <div class="toast" id="toast"></div>
 
   <script>
+    const PAGE_SIZE = 24;
     let allRecords = [];
     let currentType = 'all';
     let searchQuery = '';
+    let displayCount = PAGE_SIZE;
 
     async function loadRecords() {
       const res = await fetch('/lurl/api/records');
       const data = await res.json();
       allRecords = data.records;
+      updateStats();
       renderGrid();
+    }
+
+    function updateStats() {
+      const videos = allRecords.filter(r => r.type === 'video').length;
+      const images = allRecords.filter(r => r.type === 'image').length;
+      const backed = allRecords.filter(r => r.fileExists).length;
+      document.getElementById('statTotal').textContent = allRecords.length;
+      document.getElementById('statVideos').textContent = videos;
+      document.getElementById('statImages').textContent = images;
+      document.getElementById('statBacked').textContent = backed;
     }
 
     function filterRecords() {
       let filtered = allRecords;
-
-      // Type filter
       if (currentType !== 'all') {
         filtered = filtered.filter(r => r.type === currentType);
       }
-
-      // Search filter
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(r =>
@@ -478,38 +762,58 @@ function browsePage() {
           (r.pageUrl && r.pageUrl.toLowerCase().includes(q))
         );
       }
-
       return filtered;
     }
 
     function renderGrid() {
       const filtered = filterRecords();
-      document.getElementById('resultCount').textContent = filtered.length + ' items';
+      const toShow = filtered.slice(0, displayCount);
+      const hasMore = filtered.length > displayCount;
+
+      document.getElementById('resultInfo').textContent =
+        'Showing ' + toShow.length + ' of ' + filtered.length;
+
+      document.getElementById('loadMoreContainer').style.display = hasMore ? 'block' : 'none';
 
       if (filtered.length === 0) {
-        document.getElementById('grid').innerHTML = '<div class="empty">' +
-          (searchQuery ? 'No results for "' + searchQuery + '"' : 'No content yet') + '</div>';
+        document.getElementById('grid').innerHTML =
+          '<div class="empty"><div class="empty-icon">' +
+          (searchQuery ? '🔍' : '📭') + '</div><div class="empty-text">' +
+          (searchQuery ? 'No results for "' + searchQuery + '"' : 'No content yet') + '</div></div>';
         return;
       }
 
       const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
+      const formatDate = (d) => {
+        const date = new Date(d);
+        const now = new Date();
+        const diff = now - date;
+        if (diff < 86400000) return 'Today';
+        if (diff < 172800000) return 'Yesterday';
+        return date.toLocaleDateString();
+      };
 
-      document.getElementById('grid').innerHTML = filtered.map(r => \`
-        <div class="card" onclick="window.location.href='/lurl/view/\${r.id}'">
-          <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
-            \${r.fileExists
-              ? '<div class="play-icon"></div>'
-              : '<span style="font-size:24px;color:#666">Pending</span>'}
+      document.getElementById('grid').innerHTML = toShow.map(r => \`
+        <article class="card" onclick="window.location.href='/lurl/view/\${r.id}'">
+          <div class="thumb \${r.type === 'image' ? 'image-type' : ''} \${!r.fileExists ? 'pending' : ''}">
+            \${r.fileExists ? \`
+              <div class="thumb-overlay">
+                <div class="play-btn"></div>
+              </div>
+              <span class="thumb-badge">\${r.type === 'video' ? 'VIDEO' : 'IMAGE'}</span>
+            \` : \`
+              <div class="thumb-pending">⏳ Backup Pending</div>
+            \`}
           </div>
-          <div class="card-info">
-            <div class="card-title">\${getTitle(r.title)}</div>
-            <div class="card-meta">
-              <span class="card-date">\${new Date(r.capturedAt).toLocaleDateString()}</span>
-              <span class="card-id" onclick="event.stopPropagation();copyId('\${r.id}')" title="Click to copy">#\${r.id}</span>
+          <div class="card-body">
+            <h3 class="card-title">\${getTitle(r.title)}</h3>
+            <div class="card-footer">
+              <span class="card-date">\${formatDate(r.capturedAt)}</span>
+              <span class="card-id" onclick="event.stopPropagation();copyId('\${r.id}')" title="Click to copy">\${r.id}</span>
             </div>
-            \${!r.fileExists ? '<div class="card-status">Backup pending</div>' : ''}
+            \${!r.fileExists ? '<div class="card-status">⏳ Waiting for backup</div>' : ''}
           </div>
-        </div>
+        </article>
       \`).join('');
     }
 
@@ -525,27 +829,35 @@ function browsePage() {
       setTimeout(() => toast.classList.remove('show'), 2000);
     }
 
-    // Tab click
+    function loadMore() {
+      displayCount += PAGE_SIZE;
+      renderGrid();
+    }
+
+    // Event listeners
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentType = tab.dataset.type;
+        displayCount = PAGE_SIZE;
         renderGrid();
       });
     });
 
-    // Search input with debounce
     let searchTimeout;
     document.getElementById('search').addEventListener('input', (e) => {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         searchQuery = e.target.value.trim();
+        displayCount = PAGE_SIZE;
         renderGrid();
       }, 200);
     });
 
-    // URL param for search
+    document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
+
+    // URL param
     const urlParams = new URLSearchParams(window.location.search);
     const qParam = urlParams.get('q');
     if (qParam) {
@@ -560,7 +872,7 @@ function browsePage() {
 }
 
 function viewPage(record, fileExists) {
-  const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? '未命名' : t;
+  const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
   const title = getTitle(record.title);
   const isVideo = record.type === 'video';
 
@@ -569,75 +881,1025 @@ function viewPage(record, fileExists) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - Lurl</title>
+  <title>${title} - Lurl Archive</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
   <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #111111;
+      --bg-card: #181818;
+      --bg-hover: #252525;
+      --accent: #3b82f6;
+      --text-primary: #ffffff;
+      --text-secondary: #aaaaaa;
+      --text-muted: #666666;
+      --border: #2a2a2a;
+      --success: #22c55e;
+      --warning: #f59e0b;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
-    .header h1 { font-size: 1.3em; }
-    .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
-    .header nav a:hover { color: white; }
-    .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; min-height: 200px; display: flex; align-items: center; justify-content: center; }
-    .media-container video, .media-container img { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
-    .media-missing { color: #666; text-align: center; padding: 40px; }
-    .media-missing p { margin-bottom: 15px; }
-    .info { background: #1a1a1a; border-radius: 12px; padding: 20px; }
-    .info h2 { font-size: 1.3em; margin-bottom: 15px; line-height: 1.4; }
-    .info-row { display: flex; gap: 10px; margin-bottom: 10px; color: #aaa; font-size: 0.9em; }
-    .info-row span { color: #666; }
-    .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-    .btn { padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 0.95em; border: none; cursor: pointer; }
-    .btn-primary { background: #2196F3; color: white; }
-    .btn-secondary { background: #333; color: white; }
-    .btn-warning { background: #f59e0b; color: white; }
-    .btn:hover { opacity: 0.9; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .back-link { display: inline-block; margin-bottom: 20px; color: #aaa; text-decoration: none; }
-    .back-link:hover { color: white; }
-    .status { margin-top: 10px; font-size: 0.9em; }
-    .status.success { color: #4ade80; }
-    .status.error { color: #f87171; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* Header */
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+    }
+    .header-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 1.1em;
+    }
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .nav-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9em;
+      padding: 8px 16px;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .nav-link:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    /* Main */
+    .main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9em;
+      margin-bottom: 20px;
+      transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--text-primary); }
+
+    /* Player */
+    .player-container {
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      aspect-ratio: 16/9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .player-container video, .player-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .player-missing {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 40px;
+    }
+    .player-missing-icon { font-size: 48px; margin-bottom: 16px; }
+    .player-missing-text { font-size: 1.1em; margin-bottom: 8px; }
+    .player-missing-url {
+      font-size: 0.8em;
+      color: var(--text-muted);
+      word-break: break-all;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* Content */
+    .content {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 24px;
+    }
+    @media (max-width: 900px) {
+      .content { grid-template-columns: 1fr; }
+    }
+
+    /* Info Panel */
+    .info-panel {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 24px;
+      border: 1px solid var(--border);
+    }
+    .info-title {
+      font-size: 1.4em;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 16px;
+    }
+    .info-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9em;
+      color: var(--text-secondary);
+    }
+    .meta-icon { font-size: 1.1em; }
+
+    .info-section {
+      margin-bottom: 20px;
+    }
+    .info-label {
+      font-size: 0.8em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .info-value {
+      font-size: 0.9em;
+      color: var(--text-secondary);
+      word-break: break-all;
+    }
+    .info-value a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .info-value a:hover { text-decoration: underline; }
+
+    .id-badge {
+      display: inline-block;
+      background: rgba(59,130,246,0.1);
+      color: var(--accent);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.95em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .id-badge:hover { background: rgba(59,130,246,0.2); }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85em;
+    }
+    .status-badge.success { background: rgba(34,197,94,0.1); color: var(--success); }
+    .status-badge.warning { background: rgba(245,158,11,0.1); color: var(--warning); }
+
+    /* Actions */
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 0.95em;
+      font-weight: 500;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .btn-warning {
+      background: var(--warning);
+      color: #000;
+    }
+    .btn-warning:hover { background: #d97706; }
+
+    .help-text {
+      font-size: 0.8em;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 12px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s;
+      z-index: 1000;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>Lurl</h1>
-    <nav>
-      <a href="/lurl/admin">管理面板</a>
-      <a href="/lurl/browse">影片庫</a>
-    </nav>
-  </div>
-  <div class="container">
-    <a href="/lurl/browse" class="back-link">← 返回影片庫</a>
-    <div class="media-container">
+  <header class="header">
+    <div class="header-inner">
+      <a href="/lurl/browse" class="logo">
+        <div class="logo-icon">▶</div>
+        <span>Lurl Archive</span>
+      </a>
+      <a href="/lurl/browse" class="nav-link">Browse</a>
+    </div>
+  </header>
+
+  <main class="main">
+    <a href="/lurl/browse" class="back-link">← Back to library</a>
+
+    <div class="player-container">
       ${fileExists
         ? (isVideo
           ? `<video src="/lurl/files/${record.backupPath}" controls autoplay></video>`
           : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`)
-        : `<div class="media-missing">
-            <p>⚠️ 檔案尚未下載成功</p>
-            <p style="font-size:0.8em;color:#555;">原始位置：${record.fileUrl}</p>
+        : `<div class="player-missing">
+            <div class="player-missing-icon">⏳</div>
+            <div class="player-missing-text">Backup Pending</div>
+            <div class="player-missing-url">${record.fileUrl}</div>
           </div>`
       }
     </div>
-    <div class="info">
-      <h2>${title}</h2>
-      <div class="info-row"><span>類型：</span>${isVideo ? '影片' : '圖片'}</div>
-      <div class="info-row"><span>來源：</span>${record.source || 'lurl'}</div>
-      <div class="info-row"><span>收錄時間：</span>${new Date(record.capturedAt).toLocaleString('zh-TW')}</div>
-      <div class="info-row"><span>本地檔案：</span>${fileExists ? '✅ 已備份' : '❌ 未備份'}</div>
-      <div class="info-row" style="word-break:break-all;"><span>原始頁面：</span><a href="${record.pageUrl}" target="_blank" style="color:#4a9eff;font-size:0.85em;">${record.pageUrl}</a></div>
-      <div class="info-row" style="word-break:break-all;"><span>CDN：</span><span style="color:#555;font-size:0.85em;">${record.fileUrl}</span></div>
-      <div class="actions">
-        ${fileExists ? `<a href="/lurl/files/${record.backupPath}" download class="btn btn-primary">下載</a>` : ''}
-        ${record.ref ? `<a href="${record.ref}" target="_blank" class="btn btn-secondary">📖 D卡文章</a>` : ''}
-        ${!fileExists ? `<a href="${record.pageUrl}" target="_blank" class="btn btn-warning">🔄 重新下載（需安裝腳本）</a>` : ''}
+
+    <div class="content">
+      <div class="info-panel">
+        <h1 class="info-title">${title}</h1>
+
+        <div class="info-meta">
+          <div class="meta-item">
+            <span class="meta-icon">${isVideo ? '🎬' : '🖼️'}</span>
+            <span>${isVideo ? 'Video' : 'Image'}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-icon">📅</span>
+            <span>${new Date(record.capturedAt).toLocaleDateString()}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-icon">🌐</span>
+            <span>${record.source || 'lurl'}</span>
+          </div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-label">Record ID</div>
+          <span class="id-badge" onclick="copyId('${record.id}')" title="Click to copy">${record.id}</span>
+        </div>
+
+        <div class="info-section">
+          <div class="info-label">Status</div>
+          ${fileExists
+            ? '<span class="status-badge success">✓ Backed up</span>'
+            : '<span class="status-badge warning">⏳ Pending backup</span>'}
+        </div>
+
+        <div class="info-section">
+          <div class="info-label">Original Page</div>
+          <div class="info-value"><a href="${record.pageUrl}" target="_blank">${record.pageUrl}</a></div>
+        </div>
+
+        ${record.ref ? `
+        <div class="info-section">
+          <div class="info-label">Dcard Article</div>
+          <div class="info-value"><a href="${record.ref}" target="_blank">${record.ref}</a></div>
+        </div>
+        ` : ''}
+
+        <div class="info-section">
+          <div class="info-label">CDN URL</div>
+          <div class="info-value" style="color:var(--text-muted);font-size:0.8em;">${record.fileUrl}</div>
+        </div>
       </div>
-      ${!fileExists ? `<div class="status" style="margin-top:15px;color:#888;font-size:0.85em;">💡 點擊「重新下載」會開啟原始頁面，若已安裝 Tampermonkey 腳本，將自動備份檔案</div>` : ''}
+
+      <div class="actions-panel">
+        <div class="actions">
+          ${fileExists ? `<a href="/lurl/files/${record.backupPath}" download class="btn btn-primary">⬇️ Download</a>` : ''}
+          ${record.ref ? `<a href="${record.ref}" target="_blank" class="btn btn-secondary">📖 View Dcard Post</a>` : ''}
+          <a href="${record.pageUrl}" target="_blank" class="btn btn-secondary">🔗 Original Page</a>
+          ${!fileExists ? `<a href="${record.pageUrl}" target="_blank" class="btn btn-warning">🔄 Retry Backup</a>` : ''}
+        </div>
+        ${!fileExists ? `<p class="help-text">Open the original page with Tampermonkey script installed to backup this file.</p>` : ''}
+      </div>
     </div>
-  </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    function copyId(id) {
+      navigator.clipboard.writeText(id);
+      const toast = document.getElementById('toast');
+      toast.textContent = 'Copied: ' + id;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+  </script>
+</body>
+</html>`;
+}
+
+// ==================== Landing Page ====================
+
+function landingPage() {
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lurl Archive - Preserve lurl.cc Videos Forever</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #111111;
+      --bg-card: #181818;
+      --bg-hover: #252525;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-light: rgba(59,130,246,0.1);
+      --purple: #8b5cf6;
+      --text-primary: #ffffff;
+      --text-secondary: #aaaaaa;
+      --text-muted: #666666;
+      --border: #2a2a2a;
+      --success: #22c55e;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Header */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(10,10,10,0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+    .header-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 1.25em;
+    }
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .nav { display: flex; gap: 8px; }
+    .nav-link {
+      padding: 8px 16px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 0.9em;
+      transition: all 0.2s;
+    }
+    .nav-link:hover { color: var(--text-primary); background: var(--bg-hover); text-decoration: none; }
+    .nav-btn {
+      padding: 8px 20px;
+      background: var(--accent);
+      color: white;
+      border-radius: 8px;
+      font-size: 0.9em;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .nav-btn:hover { background: var(--accent-hover); text-decoration: none; }
+
+    /* Hero Section */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 100px 24px 60px;
+      background: radial-gradient(ellipse at top, rgba(59,130,246,0.1) 0%, transparent 50%);
+    }
+    .hero-inner {
+      max-width: 1000px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--accent-light);
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 24px;
+      font-size: 0.85em;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+    .hero-title {
+      font-size: clamp(2.5em, 6vw, 4em);
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #fff 0%, #aaa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-subtitle {
+      font-size: 1.25em;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 1em;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.3s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      color: white;
+      box-shadow: 0 4px 20px rgba(59,130,246,0.3);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 30px rgba(59,130,246,0.4); text-decoration: none; }
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+
+    /* Stats Section */
+    .stats-section {
+      padding: 80px 24px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .stats-inner {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+    }
+    .stat-card {
+      text-align: center;
+      padding: 24px;
+    }
+    .stat-value {
+      font-size: 3em;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .stat-label { color: var(--text-muted); margin-top: 8px; }
+
+    /* Features Section */
+    .features {
+      padding: 100px 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .section-title {
+      font-size: 2.5em;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      text-align: center;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 60px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.3s;
+    }
+    .feature-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+    .feature-icon {
+      width: 56px;
+      height: 56px;
+      background: var(--accent-light);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+    .feature-title { font-size: 1.25em; font-weight: 600; margin-bottom: 12px; }
+    .feature-desc { color: var(--text-secondary); font-size: 0.95em; }
+
+    /* How It Works */
+    .how-it-works {
+      padding: 100px 24px;
+      background: var(--bg-secondary);
+    }
+    .how-inner { max-width: 1000px; margin: 0 auto; }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+      margin-top: 60px;
+    }
+    .step {
+      text-align: center;
+      position: relative;
+    }
+    .step-number {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25em;
+      font-weight: 700;
+      margin: 0 auto 20px;
+    }
+    .step-title { font-size: 1.2em; font-weight: 600; margin-bottom: 12px; }
+    .step-desc { color: var(--text-secondary); font-size: 0.95em; }
+
+    /* Recent Videos */
+    .recent {
+      padding: 100px 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .recent-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+    .recent-title { font-size: 1.75em; font-weight: 700; }
+    .recent-link { color: var(--accent); font-size: 0.95em; }
+    .recent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .video-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 1px solid transparent;
+    }
+    .video-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 32px rgba(0,0,0,0.3);
+      border-color: var(--border);
+    }
+    .video-thumb {
+      aspect-ratio: 16/9;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .video-thumb-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .video-card:hover .video-thumb-overlay { opacity: 1; }
+    .play-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(255,255,255,0.95);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .play-icon::after {
+      content: '';
+      width: 0;
+      height: 0;
+      border-left: 18px solid #0a0a0a;
+      border-top: 11px solid transparent;
+      border-bottom: 11px solid transparent;
+      margin-left: 3px;
+    }
+    .video-info { padding: 16px; }
+    .video-title {
+      font-size: 0.95em;
+      font-weight: 500;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .video-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8em;
+      color: var(--text-muted);
+    }
+
+    /* CTA Section */
+    .cta {
+      padding: 100px 24px;
+      background: linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(139,92,246,0.1) 100%);
+      text-align: center;
+    }
+    .cta-inner { max-width: 600px; margin: 0 auto; }
+    .cta-title { font-size: 2.5em; font-weight: 700; margin-bottom: 16px; }
+    .cta-desc { color: var(--text-secondary); margin-bottom: 32px; font-size: 1.1em; }
+
+    /* Footer */
+    .footer {
+      padding: 40px 24px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9em;
+    }
+    .footer a { color: var(--text-secondary); }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .stats-inner { grid-template-columns: repeat(2, 1fr); }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 32px; }
+    }
+    @media (max-width: 600px) {
+      .header-inner { padding: 12px 16px; }
+      .nav { display: none; }
+      .hero { padding: 80px 16px 40px; }
+      .hero-title { font-size: 2em; }
+      .hero-subtitle { font-size: 1em; }
+      .stats-inner { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .stat-value { font-size: 2em; }
+      .section-title { font-size: 1.75em; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="/lurl" class="logo">
+        <div class="logo-icon">▶</div>
+        <span>Lurl Archive</span>
+      </a>
+      <nav class="nav">
+        <a href="/lurl/browse" class="nav-link">Browse</a>
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#how-it-works" class="nav-link">How It Works</a>
+        <a href="/lurl/browse" class="nav-btn">Enter Library</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-badge">
+        <span>🔥</span>
+        <span>Crowdsourced Video Archive</span>
+      </div>
+      <h1 class="hero-title">Preserve lurl.cc Videos Forever</h1>
+      <p class="hero-subtitle">
+        lurl.cc links expire in 24 hours. We preserve them permanently.
+        Install our script and contribute to the growing archive.
+      </p>
+      <div class="hero-actions">
+        <a href="#install" class="btn btn-primary">
+          <span>🔌</span>
+          Install Tampermonkey Script
+        </a>
+        <a href="/lurl/browse" class="btn btn-secondary">
+          <span>📚</span>
+          Browse Archive
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats-section">
+    <div class="stats-inner">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">-</div>
+        <div class="stat-label">Total Videos</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statBacked">-</div>
+        <div class="stat-label">Backed Up</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statToday">-</div>
+        <div class="stat-label">Added Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">∞</div>
+        <div class="stat-label">Forever Preserved</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <h2 class="section-title">Why Lurl Archive?</h2>
+    <p class="section-desc">
+      Built by the community, for the community. Never lose a lurl.cc video again.
+    </p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⏰</div>
+        <h3 class="feature-title">Beat the 24h Limit</h3>
+        <p class="feature-desc">
+          lurl.cc links expire in 24 hours. Our archive keeps them available permanently,
+          so you can access them anytime.
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤝</div>
+        <h3 class="feature-title">Crowdsourced</h3>
+        <p class="feature-desc">
+          Every user with the script contributes to the archive.
+          The more users, the more complete the collection.
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3 class="feature-title">CDN Bypass</h3>
+        <p class="feature-desc">
+          lurl.cc uses anti-hotlinking protection. Our script runs in your browser,
+          capturing videos only you can access.
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔍</div>
+        <h3 class="feature-title">Search & Browse</h3>
+        <p class="feature-desc">
+          Search by title, ID, or URL. Browse all archived content with our
+          modern, fast interface.
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📱</div>
+        <h3 class="feature-title">Mobile Friendly</h3>
+        <p class="feature-desc">
+          Our archive works on any device. Watch your favorite videos
+          on desktop, tablet, or phone.
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3 class="feature-title">Fast Streaming</h3>
+        <p class="feature-desc">
+          Videos are served with Range request support for smooth playback.
+          No buffering, no waiting.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-it-works" id="how-it-works">
+    <div class="how-inner">
+      <h2 class="section-title">How It Works</h2>
+      <p class="section-desc">
+        Start contributing in just 3 simple steps.
+      </p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3 class="step-title">Install Tampermonkey</h3>
+          <p class="step-desc">
+            Get the Tampermonkey browser extension from the Chrome/Firefox store.
+          </p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3 class="step-title">Add Our Script</h3>
+          <p class="step-desc">
+            Install the Lurl Downloader userscript. It runs automatically on lurl.cc pages.
+          </p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3 class="step-title">Browse Normally</h3>
+          <p class="step-desc">
+            Just browse lurl.cc as usual. The script automatically backs up videos you view.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="recent">
+    <div class="recent-header">
+      <h2 class="recent-title">Recently Archived</h2>
+      <a href="/lurl/browse" class="recent-link">View all →</a>
+    </div>
+    <div class="recent-grid" id="recentGrid">
+      <!-- Populated by JS -->
+    </div>
+  </section>
+
+  <section class="cta" id="install">
+    <div class="cta-inner">
+      <h2 class="cta-title">Ready to Contribute?</h2>
+      <p class="cta-desc">
+        Join the community and help preserve lurl.cc content.
+        Every video you view gets archived for everyone.
+      </p>
+      <div class="hero-actions">
+        <a href="https://greasyfork.org" target="_blank" class="btn btn-primary">
+          <span>📥</span>
+          Get the Script
+        </a>
+        <a href="/lurl/browse" class="btn btn-secondary">
+          <span>🎬</span>
+          Browse Archive
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>Lurl Archive - Preserving content for the community</p>
+    <p style="margin-top: 8px;">
+      <a href="/lurl/browse">Browse</a> ·
+      <a href="/lurl/admin">Admin</a>
+    </p>
+  </footer>
+
+  <script>
+    // Load stats
+    async function loadStats() {
+      try {
+        const res = await fetch('/lurl/api/records');
+        const data = await res.json();
+        const records = data.records || [];
+
+        const backed = records.filter(r => r.fileExists).length;
+        const today = new Date().toDateString();
+        const todayCount = records.filter(r => new Date(r.capturedAt).toDateString() === today).length;
+
+        document.getElementById('statTotal').textContent = records.length;
+        document.getElementById('statBacked').textContent = backed;
+        document.getElementById('statToday').textContent = todayCount;
+
+        // Render recent videos
+        renderRecent(records.slice(0, 8));
+      } catch (e) {
+        console.error('Failed to load stats:', e);
+      }
+    }
+
+    function renderRecent(records) {
+      const grid = document.getElementById('recentGrid');
+      const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
+      const formatDate = (d) => {
+        const date = new Date(d);
+        const now = new Date();
+        const diff = now - date;
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+        return date.toLocaleDateString();
+      };
+
+      if (records.length === 0) {
+        grid.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px;">No videos archived yet. Be the first contributor!</p>';
+        return;
+      }
+
+      grid.innerHTML = records.map(r => \`
+        <div class="video-card" onclick="window.location.href='/lurl/view/\${r.id}'">
+          <div class="video-thumb">
+            <div class="video-thumb-overlay">
+              <div class="play-icon"></div>
+            </div>
+          </div>
+          <div class="video-info">
+            <h3 class="video-title">\${getTitle(r.title)}</h3>
+            <div class="video-meta">
+              <span>\${formatDate(r.capturedAt)}</span>
+              <span>\${r.fileExists ? '✓ Backed up' : '⏳ Pending'}</span>
+            </div>
+          </div>
+        </div>
+      \`).join('');
+    }
+
+    loadStats();
+  </script>
 </body>
 </html>`;
 }
@@ -935,6 +2197,13 @@ module.exports = {
     }
 
     // ==================== Phase 3 ====================
+
+    // GET / (Landing Page)
+    if (req.method === 'GET' && urlPath === '/') {
+      res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
+      res.end(landingPage());
+      return;
+    }
 
     // GET /browse
     if (req.method === 'GET' && urlPath === '/browse') {
