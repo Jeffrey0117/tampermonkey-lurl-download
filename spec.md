@@ -1,139 +1,196 @@
-# Lurl 影片存檔系統 - 技術規格 v2
+# Lurl Archive - 產品規格 v2.0
 
-## 概述
+## 產品定位
 
-一個「眾人拾柴」的影片存檔系統：
-- 每個使用 Tampermonkey 腳本的人都在幫忙收集資料
-- 收集到的資料讓所有人受益
-- 影片過期的問題被解決
+**眾包影片存檔服務** - 使用者安裝 Tampermonkey 腳本後，瀏覽 lurl.cc/myppt.cc 時自動備份影片到雲端，並可在 Lurl Archive 網站觀看所有備份內容。
+
+### 核心價值
+- lurl.cc 影片 24 小時後失效，我們永久保存
+- CDN 有防盜連，只有裝腳本的人能貢獻（技術門檻 = 護城河）
+- 越多人用，資料庫越完整 = 網路效應
+
+---
+
+## 商業模式
+
+### 會員制度
+
+| 等級 | 價格 | 權限 |
+|------|------|------|
+| 訪客 | 免費 | 瀏覽首頁 5 支預覽影片、看標題列表（模糊縮圖，無法播放） |
+| 免費會員 | 免費註冊 | 每日觀看 3 支影片、搜尋功能 |
+| 貢獻者 | 免費 | 安裝腳本並貢獻 10+ 影片後升級，無限觀看 |
+| VIP | $99/月 | 無限觀看、無廣告、優先載入、下載功能、API 存取 |
+
+### 收入來源
+1. **VIP 訂閱** - 主要收入
+2. **廣告** - 免費用戶觀看前插入廣告（5 秒倒數）
+3. **腳本內廣告** - 上傳完成後偶爾顯示贊助提示
+
+### 腳本廣告規劃
+
+```
+上傳成功 Toast：
+┌──────────────────────────────┐
+│ ✅ 已備份到 Lurl Archive     │
+│ 💎 升級 VIP 享無限觀看       │
+└──────────────────────────────┘
+
+頻率：每 10 次上傳顯示 1 次
+VIP 用戶：完全不顯示
+```
+
+---
 
 ## 系統架構
 
+### 目前 (MVP)
 ```
-┌─────────────────┐         ┌─────────────────────────────────┐
-│  Tampermonkey   │  HTTP   │        Lurl API (cloudpipe)     │
-│     腳本        │ ──────► │  epi.isnowfriend.com/lurl       │
-└─────────────────┘  POST   └───────────────┬─────────────────┘
-                                            │
-              ┌─────────────────────────────┼─────────────────────────────┐
-              ▼                             ▼                             ▼
-      ┌──────────────┐            ┌──────────────┐            ┌──────────────┐
-      │   資料庫     │            │  備份資料夾  │            │   前端面板   │
-      │ records.jsonl│            │ /videos      │            │  展示 + 管理 │
-      └──────────────┘            │ /images      │            └──────────────┘
-                                  └──────────────┘
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ Userscript  │────▶│  Cloudpipe  │────▶│  Local FS   │
+│ (瀏覽器)    │     │  (Node.js)  │     │  (影片檔)   │
+└─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### 未來 (Production)
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ Userscript  │────▶│   API       │────▶│  R2/S3      │
+│ (瀏覽器)    │     │  (Hono/CF)  │     │  (物件儲存) │
+└─────────────┘     └─────────────┘     └─────────────┘
+                           │
+                    ┌──────┴──────┐
+                    │   D1/Turso  │
+                    │  (資料庫)   │
+                    └─────────────┘
 ```
 
 ---
 
-## 功能清單
+## 功能規格
 
-### Phase 1：資料收集 ✅ 已完成
-- [x] POST /lurl/capture - 接收資料
-- [x] 存到 records.jsonl
-- [x] 下載備份到 videos/ 或 images/
-- [x] Tampermonkey 腳本自動回報
+### 1. 首頁 Landing (/)
+- Hero 區塊：介紹服務 + 安裝腳本 CTA
+- 精選影片：5 支可播放的預覽影片（吸引註冊）
+- 最新上架：標題列表（需登入才能看內容）
+- 統計數字：總影片數、今日新增、貢獻者人數
 
-### Phase 2：管理面板
-- [ ] GET /lurl/admin - 管理員面板頁面
-- [ ] GET /lurl/api/records - 取得所有記錄（JSON）
-- [ ] GET /lurl/api/stats - 統計資料（總數、人氣排行）
-- [ ] DELETE /lurl/api/records/:id - 刪除記錄
+### 2. 瀏覽頁 (/browse)
+- **搜尋欄**：支援 ID、標題、URL 片段搜尋
+- **篩選**：全部 / 影片 / 圖片
+- **排序**：最新 / 最舊
+- **卡片網格**：
+  - 縮圖 placeholder（lazy load）
+  - 標題（2 行截斷）
+  - ID 標籤（可點擊複製）
+  - 上架時間
+- **分頁**：每頁 20 筆，無限滾動
 
-### Phase 3：內容展示
-- [ ] GET /lurl/browse - 公開瀏覽頁面（類似影片站）
-- [ ] GET /lurl/video/:id - 單一影片頁面
-- [ ] GET /lurl/files/videos/:filename - 提供影片檔案
-- [ ] GET /lurl/files/images/:filename - 提供圖片檔案
+### 3. 觀看頁 (/view/:id)
+- 影片播放器（支援 Range 請求）
+- 影片資訊：標題、來源、時間、檔案大小
+- 原始連結（資訊顯示，非按鈕）
+- CDN URL（資訊顯示）
+- 下載按鈕（VIP only / 貢獻者）
+- Dcard 文章連結（如有）
 
-### Phase 4：影片復活（未來）
-- [ ] 腳本查詢 API：這個 pageUrl 有沒有備份？
-- [ ] 有備份 → 直接渲染備份影片
-- [ ] 沒備份 → 走原本流程
+### 4. 搜尋 API
+```
+GET /api/records?q=關鍵字&type=video&page=1&limit=20
+
+搜尋範圍：
+- id: 精確或部分比對 (如 "mkhev")
+- title: 模糊比對 (如 "西斯")
+- pageUrl: 包含比對 (如 "n41Xm")
+```
 
 ---
 
-## API 端點設計
+## UI 設計
 
-### Phase 1（已完成）
+### 配色
+- 背景：#0f0f0f (深黑)
+- 卡片：#1a1a1a
+- 強調：#3b82f6 (藍)
+- 文字：#ffffff / #888888
 
+### 佈局
 ```
-POST /lurl/capture
-Body: { title, pageUrl, fileUrl, type }
-Response: { ok: true }
-```
-
-```
-GET /lurl/health
-Response: { status: "ok", timestamp: "..." }
-```
-
-### Phase 2：管理面板
-
-```
-GET /lurl/admin
-Response: HTML 管理頁面
-```
-
-```
-GET /lurl/api/records
-Query: ?page=1&limit=20&type=video
-Response: {
-  records: [...],
-  total: 100,
-  page: 1,
-  totalPages: 5
-}
+┌──────────────────────────────────────────────────────┐
+│  🎬 Lurl Archive          [🔍 搜尋...]        [登入] │
+├──────────────────────────────────────────────────────┤
+│ [全部] [影片] [圖片]                       排序: 最新 │
+├──────────────────────────────────────────────────────┤
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
+│ │ ▶ 縮圖   │ │ ▶ 縮圖   │ │ ▶ 縮圖   │ │ ▶ 縮圖   │ │
+│ ├──────────┤ ├──────────┤ ├──────────┤ ├──────────┤ │
+│ │ 標題...  │ │ 標題...  │ │ 標題...  │ │ 標題...  │ │
+│ │ #mkhev   │ │ #abc123  │ │ #xyz789  │ │ #def456  │ │
+│ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
+│                                                      │
+│                   [載入更多...]                      │
+└──────────────────────────────────────────────────────┘
 ```
 
-```
-GET /lurl/api/stats
-Response: {
-  total: 100,
-  videos: 80,
-  images: 20,
-  topUrls: [
-    { pageUrl: "...", count: 5 },
-    ...
-  ]
-}
-```
+---
 
-### Phase 3：內容展示
+## 實作計畫
 
-```
-GET /lurl/browse
-Query: ?page=1&type=video
-Response: HTML 瀏覽頁面（卡片式展示）
-```
+### Sprint 1: 效能與搜尋 ⬅️ 現在
+- [x] 修復舊記錄 backupPath 問題
+- [ ] P0: Browse 頁面效能優化（移除 video preload）
+- [ ] P1: 新增搜尋欄位（前端即時過濾）
+- [ ] P2: API 支援 q 參數搜尋
+- [ ] P3: 卡片顯示 ID 標籤（可複製）
+- [ ] Commit & Push
 
-```
-GET /lurl/files/videos/:filename
-Response: 影片檔案（video/mp4）
-```
+### Sprint 2: UI 改版
+- [ ] 重新設計 browse 頁面樣式
+- [ ] 重新設計 view 頁面
+- [ ] 新增首頁 landing page
+- [ ] RWD 響應式設計
 
-```
-GET /lurl/files/images/:filename
-Response: 圖片檔案（image/jpeg）
-```
+### Sprint 3: 基礎會員
+- [ ] 簡易登入系統
+- [ ] 貢獻者追蹤（腳本帶 token）
+- [ ] 觀看限制邏輯
+
+### Sprint 4: 商業化
+- [ ] 付款整合 (Stripe)
+- [ ] 廣告系統
+- [ ] 腳本內提示
 
 ---
 
 ## 資料結構
 
-### records.jsonl（每行一筆）
-
+### Record
 ```json
 {
-  "id": "abc123",
-  "title": "Dcard 文章標題",
-  "pageUrl": "https://lurl.cc/xxx",
-  "fileUrl": "https://xxx.com/video.mp4",
+  "id": "mkhevwfs",
+  "title": "影片標題",
+  "pageUrl": "https://lurl.cc/n41Xm",
+  "fileUrl": "https://cdn.../video.mov",
   "type": "video",
   "source": "lurl",
-  "capturedAt": "2026-01-16T12:00:00Z",
-  "backupPath": "videos/Dcard文章標題.mp4",
-  "accessCount": 5
+  "capturedAt": "2026-01-16T21:49:44.824Z",
+  "backupPath": "videos/untitled_mkhevwfs.mov",
+  "ref": "https://dcard.tw/...",
+  "size": 103790000,
+  "contributorId": "user_xxx"
+}
+```
+
+### User (Phase 3)
+```json
+{
+  "id": "user_xxx",
+  "email": "user@example.com",
+  "tier": "contributor",
+  "contributions": 42,
+  "dailyViews": 0,
+  "createdAt": "...",
+  "lastLoginAt": "..."
 }
 ```
 
@@ -142,45 +199,25 @@ Response: 圖片檔案（image/jpeg）
 ## 檔案結構
 
 ```
-cloudpipe/
-├── services/
-│   └── lurl.js              # 主要 API 服務
-├── data/
-│   └── lurl/
-│       ├── records.jsonl    # 資料記錄
-│       ├── videos/          # 影片備份
-│       └── images/          # 圖片備份
-```
-
-```
 lurl-download-userscript/
 ├── lurlDownloader.user.js   # Tampermonkey 腳本
 ├── server/
 │   └── lurl.js              # cloudpipe 服務原始碼
 ├── SPEC.md                  # 本文件
-└── feat.md                  # 需求討論
+└── index.html               # Landing page (未來)
+
+cloudpipe/
+├── services/
+│   └── lurl.js              # 部署的 API 服務
+└── data/
+    └── lurl/
+        ├── records.jsonl    # 資料記錄
+        ├── videos/          # 影片備份
+        └── images/          # 圖片備份
 ```
 
 ---
 
-## 開發順序
+## 開始 Sprint 1
 
-| Phase | 任務 | 狀態 |
-|-------|------|------|
-| 1 | 資料收集 API | ✅ 完成 |
-| 1 | Tampermonkey 腳本整合 | ✅ 完成 |
-| 1 | cloudpipe 部署 | ✅ 完成 |
-| 2 | 管理面板 API | 🔲 待做 |
-| 2 | 管理面板 UI | 🔲 待做 |
-| 3 | 瀏覽頁面 API | 🔲 待做 |
-| 3 | 瀏覽頁面 UI | 🔲 待做 |
-| 4 | 影片復活機制 | 🔲 未來 |
-
----
-
-## 技術選擇
-
-- **部署：** cloudpipe（一個 .js = 一個 API）
-- **存儲：** .jsonl（簡單、可追加）
-- **前端：** 內嵌 HTML（不用額外框架）
-- **樣式：** 簡潔、響應式
+目標：Browse 頁面效能優化 + 搜尋功能 + ID 標籤
