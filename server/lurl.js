@@ -50,45 +50,90 @@ function sanitizeFilename(filename) {
     .substring(0, 200) || 'untitled';
 }
 
-async function downloadFile(url, destPath, pageUrl = '') {
-  try {
-    // 偽裝成瀏覽器請求 - 更完整的 headers
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'video/*,image/*,*/*;q=0.8',
-      'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'identity',
-      'Connection': 'keep-alive',
-      'Sec-Fetch-Dest': 'video',
-      'Sec-Fetch-Mode': 'no-cors',
-      'Sec-Fetch-Site': 'cross-site',
-    };
-
-    // Referer 用原始頁面 URL（重要！lurl 會檢查）
-    if (pageUrl) {
-      headers['Referer'] = pageUrl;
-      // 從 pageUrl 提取 origin
-      try {
-        const urlObj = new URL(pageUrl);
-        headers['Origin'] = urlObj.origin;
-      } catch {}
-    }
-
-    const response = await fetch(url, { headers });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const fileStream = fs.createWriteStream(destPath);
-    await pipeline(response.body, fileStream);
-    return true;
-  } catch (err) {
-    console.error(`[lurl] 下載失敗: ${url}`, err.message);
-    return false;
+async function downloadFile(url, destPath, pageUrl = '', cookies = '') {
+  // 根據 CDN 來源決定 Referer
+  // lurl CDN 需要 https://lurl.cc/ 當 referer
+  // myppt CDN 需要 https://myppt.cc/ 當 referer
+  let baseReferer = 'https://lurl.cc/';
+  if (url.includes('myppt.cc')) {
+    baseReferer = 'https://myppt.cc/';
   }
+
+  // 策略清單：有 cookie 優先試 cookie
+  const strategies = [];
+
+  // 策略 1：用前端傳來的 cookies（最可能成功）
+  if (cookies) {
+    strategies.push({ referer: baseReferer, cookie: cookies, name: 'cookie+referer' });
+  }
+
+  // 策略 2：只用 referer（fallback）
+  strategies.push({ referer: baseReferer, cookie: '', name: 'referer-only' });
+  if (pageUrl) {
+    strategies.push({ referer: pageUrl, cookie: '', name: 'pageUrl-referer' });
+  }
+
+  for (const strategy of strategies) {
+    try {
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'identity',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-CH-UA': '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+        'Sec-CH-UA-Mobile': '?1',
+        'Sec-CH-UA-Platform': '"Android"',
+        'Sec-Fetch-Dest': 'video',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'same-site',
+        'Range': 'bytes=0-',
+      };
+
+      if (strategy.referer) {
+        headers['Referer'] = strategy.referer;
+      }
+      if (strategy.cookie) {
+        headers['Cookie'] = strategy.cookie;
+      }
+
+      console.log(`[lurl] 嘗試下載 (策略: ${strategy.name})`);
+      const response = await fetch(url, { headers });
+
+      if (!response.ok) {
+        console.log(`[lurl] 策略失敗: HTTP ${response.status}`);
+        continue;
+      }
+
+      const fileStream = fs.createWriteStream(destPath);
+      await pipeline(response.body, fileStream);
+      console.log(`[lurl] 下載成功 (策略: ${strategy.name})`);
+      return true;
+    } catch (err) {
+      console.log(`[lurl] 策略錯誤: ${err.message}`);
+    }
+  }
+
+  console.error(`[lurl] 下載失敗: ${url} (所有策略都失敗)`);
+  return false;
 }
 
 function appendRecord(record) {
   ensureDirs();
   fs.appendFileSync(RECORDS_FILE, JSON.stringify(record) + '\n', 'utf8');
+}
+
+function updateRecordFileUrl(id, newFileUrl) {
+  const records = readAllRecords();
+  const updated = records.map(r => {
+    if (r.id === id) {
+      return { ...r, fileUrl: newFileUrl };
+    }
+    return r;
+  });
+  fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
 }
 
 function readAllRecords() {
@@ -124,7 +169,7 @@ function corsHeaders(contentType = 'application/json') {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Record-Id, X-Chunk-Index, X-Total-Chunks',
     'Content-Type': contentType
   };
 }
@@ -221,14 +266,15 @@ function adminPage() {
           <div class="record-thumb \${r.type}">
             \${r.type === 'image'
               ? \`<img src="/lurl/files/\${r.backupPath}" onerror="this.outerHTML='🖼️'">\`
-              : '🎬'}
+              : (r.fileExists ? '🎬' : '⏳')}
           </div>
           <div class="record-info">
-            <div class="record-title">\${getTitle(r.title)}</div>
+            <div class="record-title">\${getTitle(r.title)}\${r.fileExists ? '' : ' <span style="color:#e53935;font-size:0.8em">(未備份)</span>'}</div>
             <div class="record-meta">\${new Date(r.capturedAt).toLocaleString()}</div>
           </div>
           <div class="record-actions">
-            <a href="/lurl/files/\${r.backupPath}" target="_blank">查看</a>
+            \${r.fileExists ? \`<a href="/lurl/files/\${r.backupPath}" target="_blank">查看</a>\` : ''}
+            <a href="/lurl/view/\${r.id}">詳情</a>
             <a href="\${r.pageUrl}" target="_blank">原始</a>
             <button class="delete-btn" onclick="deleteRecord('\${r.id}')">刪除</button>
           </div>
@@ -270,51 +316,143 @@ function browsePage() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lurl 影片庫</title>
+  <title>Lurl Archive</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .header h1 { font-size: 1.3em; }
     .header nav { display: flex; gap: 20px; }
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
     .header nav a:hover, .header nav a.active { color: white; }
     .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+    /* Search Bar */
+    .search-bar { margin-bottom: 20px; }
+    .search-bar input {
+      width: 100%;
+      max-width: 500px;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: white;
+      font-size: 1em;
+      outline: none;
+    }
+    .search-bar input::placeholder { color: #666; }
+    .search-bar input:focus { box-shadow: 0 0 0 2px #3b82f6; }
+
+    /* Filter Bar */
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+    .tabs { display: flex; gap: 10px; }
+    .tab { padding: 8px 16px; background: #333; border: none; border-radius: 20px; color: white; cursor: pointer; transition: all 0.2s; }
+    .tab:hover { background: #444; }
+    .tab.active { background: #3b82f6; color: #fff; }
+    .result-count { margin-left: auto; color: #666; font-size: 0.9em; }
+
+    /* Grid */
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-    .card { background: #1a1a1a; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s; }
-    .card:hover { transform: scale(1.02); }
-    .card-thumb { aspect-ratio: 16/9; background: #333; display: flex; align-items: center; justify-content: center; font-size: 48px; overflow: hidden; }
-    .card-thumb video, .card-thumb img { width: 100%; height: 100%; object-fit: cover; filter: blur(12px); transition: filter 0.3s; }
-    .card:hover .card-thumb video, .card:hover .card-thumb img { filter: blur(6px); }
+    .card { background: #1a1a1a; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+
+    /* Thumbnail - No video preload! */
+    .card-thumb {
+      aspect-ratio: 16/9;
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f1a2e 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      position: relative;
+    }
+    .card-thumb .play-icon {
+      width: 60px;
+      height: 60px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+      transition: all 0.2s;
+    }
+    .card:hover .card-thumb .play-icon { background: rgba(59,130,246,0.8); transform: scale(1.1); }
+    .card-thumb .play-icon::after {
+      content: '';
+      width: 0;
+      height: 0;
+      border-left: 18px solid white;
+      border-top: 11px solid transparent;
+      border-bottom: 11px solid transparent;
+      margin-left: 4px;
+    }
+    .card-thumb.pending { background: linear-gradient(135deg, #3d2a1a 0%, #1a1a1a 100%); }
+    .card-thumb.image { background: linear-gradient(135deg, #2d1a3d 0%, #1a1a2e 100%); }
+
+    /* Card Info */
     .card-info { padding: 12px; }
-    .card-title { font-size: 0.95em; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .card-meta { font-size: 0.8em; color: #aaa; margin-top: 8px; }
-    .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-    .tab { padding: 8px 16px; background: #333; border: none; border-radius: 20px; color: white; cursor: pointer; }
-    .tab.active { background: #fff; color: #000; }
+    .card-title { font-size: 0.95em; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
+    .card-meta { display: flex; justify-content: space-between; align-items: center; }
+    .card-date { font-size: 0.8em; color: #666; }
+    .card-id {
+      font-size: 0.75em;
+      color: #3b82f6;
+      background: rgba(59,130,246,0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .card-id:hover { background: rgba(59,130,246,0.3); }
+    .card-status { font-size: 0.75em; color: #f59e0b; margin-top: 4px; }
+
     .empty { text-align: center; padding: 60px; color: #666; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #333;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 1000;
+    }
+    .toast.show { opacity: 1; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>Lurl</h1>
+    <h1>Lurl Archive</h1>
     <nav>
-      <a href="/lurl/admin">管理面板</a>
-      <a href="/lurl/browse" class="active">影片庫</a>
-      <a href="/lurl/health">API 狀態</a>
+      <a href="/lurl/admin">Admin</a>
+      <a href="/lurl/browse" class="active">Browse</a>
     </nav>
   </div>
   <div class="container">
-    <div class="tabs">
-      <button class="tab active" data-type="all">全部</button>
-      <button class="tab" data-type="video">影片</button>
-      <button class="tab" data-type="image">圖片</button>
+    <div class="search-bar">
+      <input type="text" id="search" placeholder="Search by title, ID, or URL (e.g. n41Xm, mkhev)..." autocomplete="off">
+    </div>
+    <div class="filter-bar">
+      <div class="tabs">
+        <button class="tab active" data-type="all">All</button>
+        <button class="tab" data-type="video">Videos</button>
+        <button class="tab" data-type="image">Images</button>
+      </div>
+      <div class="result-count" id="resultCount"></div>
     </div>
     <div class="grid" id="grid"></div>
   </div>
+  <div class="toast" id="toast"></div>
+
   <script>
     let allRecords = [];
     let currentType = 'all';
+    let searchQuery = '';
 
     async function loadRecords() {
       const res = await fetch('/lurl/api/records');
@@ -323,28 +461,71 @@ function browsePage() {
       renderGrid();
     }
 
+    function filterRecords() {
+      let filtered = allRecords;
+
+      // Type filter
+      if (currentType !== 'all') {
+        filtered = filtered.filter(r => r.type === currentType);
+      }
+
+      // Search filter
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(r =>
+          r.id.toLowerCase().includes(q) ||
+          (r.title && r.title.toLowerCase().includes(q)) ||
+          (r.pageUrl && r.pageUrl.toLowerCase().includes(q))
+        );
+      }
+
+      return filtered;
+    }
+
     function renderGrid() {
-      const filtered = currentType === 'all' ? allRecords : allRecords.filter(r => r.type === currentType);
+      const filtered = filterRecords();
+      document.getElementById('resultCount').textContent = filtered.length + ' items';
+
       if (filtered.length === 0) {
-        document.getElementById('grid').innerHTML = '<div class="empty">尚無內容</div>';
+        document.getElementById('grid').innerHTML = '<div class="empty">' +
+          (searchQuery ? 'No results for "' + searchQuery + '"' : 'No content yet') + '</div>';
         return;
       }
-      const getTitle = (t) => (!t || t === 'untitle' || t === 'undefined') ? '未命名' : t;
+
+      const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
+
       document.getElementById('grid').innerHTML = filtered.map(r => \`
         <div class="card" onclick="window.location.href='/lurl/view/\${r.id}'">
-          <div class="card-thumb">
-            \${r.type === 'image'
-              ? \`<img src="/lurl/files/\${r.backupPath}" alt="\${getTitle(r.title)}" onerror="this.outerHTML='🖼️'">\`
-              : '🎬'}
+          <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
+            \${r.fileExists
+              ? '<div class="play-icon"></div>'
+              : '<span style="font-size:24px;color:#666">Pending</span>'}
           </div>
           <div class="card-info">
             <div class="card-title">\${getTitle(r.title)}</div>
-            <div class="card-meta">\${new Date(r.capturedAt).toLocaleDateString()}</div>
+            <div class="card-meta">
+              <span class="card-date">\${new Date(r.capturedAt).toLocaleDateString()}</span>
+              <span class="card-id" onclick="event.stopPropagation();copyId('\${r.id}')" title="Click to copy">#\${r.id}</span>
+            </div>
+            \${!r.fileExists ? '<div class="card-status">Backup pending</div>' : ''}
           </div>
         </div>
       \`).join('');
     }
 
+    function copyId(id) {
+      navigator.clipboard.writeText(id);
+      showToast('Copied: ' + id);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    // Tab click
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -354,13 +535,31 @@ function browsePage() {
       });
     });
 
+    // Search input with debounce
+    let searchTimeout;
+    document.getElementById('search').addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        searchQuery = e.target.value.trim();
+        renderGrid();
+      }, 200);
+    });
+
+    // URL param for search
+    const urlParams = new URLSearchParams(window.location.search);
+    const qParam = urlParams.get('q');
+    if (qParam) {
+      document.getElementById('search').value = qParam;
+      searchQuery = qParam;
+    }
+
     loadRecords();
   </script>
 </body>
 </html>`;
 }
 
-function viewPage(record) {
+function viewPage(record, fileExists) {
   const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? '未命名' : t;
   const title = getTitle(record.title);
   const isVideo = record.type === 'video';
@@ -380,19 +579,26 @@ function viewPage(record) {
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
     .header nav a:hover { color: white; }
     .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; min-height: 200px; display: flex; align-items: center; justify-content: center; }
     .media-container video, .media-container img { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
+    .media-missing { color: #666; text-align: center; padding: 40px; }
+    .media-missing p { margin-bottom: 15px; }
     .info { background: #1a1a1a; border-radius: 12px; padding: 20px; }
     .info h2 { font-size: 1.3em; margin-bottom: 15px; line-height: 1.4; }
     .info-row { display: flex; gap: 10px; margin-bottom: 10px; color: #aaa; font-size: 0.9em; }
     .info-row span { color: #666; }
-    .actions { display: flex; gap: 10px; margin-top: 20px; }
-    .btn { padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 0.95em; }
+    .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+    .btn { padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 0.95em; border: none; cursor: pointer; }
     .btn-primary { background: #2196F3; color: white; }
     .btn-secondary { background: #333; color: white; }
+    .btn-warning { background: #f59e0b; color: white; }
     .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .back-link { display: inline-block; margin-bottom: 20px; color: #aaa; text-decoration: none; }
     .back-link:hover { color: white; }
+    .status { margin-top: 10px; font-size: 0.9em; }
+    .status.success { color: #4ade80; }
+    .status.error { color: #f87171; }
   </style>
 </head>
 <body>
@@ -406,9 +612,14 @@ function viewPage(record) {
   <div class="container">
     <a href="/lurl/browse" class="back-link">← 返回影片庫</a>
     <div class="media-container">
-      ${isVideo
-        ? `<video src="/lurl/files/${record.backupPath}" controls autoplay></video>`
-        : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`
+      ${fileExists
+        ? (isVideo
+          ? `<video src="/lurl/files/${record.backupPath}" controls autoplay></video>`
+          : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`)
+        : `<div class="media-missing">
+            <p>⚠️ 檔案尚未下載成功</p>
+            <p style="font-size:0.8em;color:#555;">原始位置：${record.fileUrl}</p>
+          </div>`
       }
     </div>
     <div class="info">
@@ -416,10 +627,15 @@ function viewPage(record) {
       <div class="info-row"><span>類型：</span>${isVideo ? '影片' : '圖片'}</div>
       <div class="info-row"><span>來源：</span>${record.source || 'lurl'}</div>
       <div class="info-row"><span>收錄時間：</span>${new Date(record.capturedAt).toLocaleString('zh-TW')}</div>
+      <div class="info-row"><span>本地檔案：</span>${fileExists ? '✅ 已備份' : '❌ 未備份'}</div>
+      <div class="info-row" style="word-break:break-all;"><span>原始頁面：</span><a href="${record.pageUrl}" target="_blank" style="color:#4a9eff;font-size:0.85em;">${record.pageUrl}</a></div>
+      <div class="info-row" style="word-break:break-all;"><span>CDN：</span><span style="color:#555;font-size:0.85em;">${record.fileUrl}</span></div>
       <div class="actions">
-        <a href="/lurl/files/${record.backupPath}" download class="btn btn-primary">下載</a>
-        <a href="${record.pageUrl}" target="_blank" class="btn btn-secondary">原始連結</a>
+        ${fileExists ? `<a href="/lurl/files/${record.backupPath}" download class="btn btn-primary">下載</a>` : ''}
+        ${record.ref ? `<a href="${record.ref}" target="_blank" class="btn btn-secondary">📖 D卡文章</a>` : ''}
+        ${!fileExists ? `<a href="${record.pageUrl}" target="_blank" class="btn btn-warning">🔄 重新下載（需安裝腳本）</a>` : ''}
       </div>
+      ${!fileExists ? `<div class="status" style="margin-top:15px;color:#888;font-size:0.85em;">💡 點擊「重新下載」會開啟原始頁面，若已安裝 Tampermonkey 腳本，將自動備份檔案</div>` : ''}
     </div>
   </div>
 </body>
@@ -459,7 +675,7 @@ module.exports = {
     // POST /capture
     if (req.method === 'POST' && urlPath === '/capture') {
       try {
-        const { title, pageUrl, fileUrl, type = 'video' } = await parseBody(req);
+        const { title, pageUrl, fileUrl, type = 'video', ref, cookies } = await parseBody(req);
 
         if (!title || !pageUrl || !fileUrl) {
           res.writeHead(400, corsHeaders());
@@ -467,49 +683,161 @@ module.exports = {
           return;
         }
 
-        // 去重：檢查 fileUrl 是否已存在
+        // 去重：用 pageUrl 判斷（同一頁面不建立重複記錄）
         const existingRecords = readAllRecords();
-        const duplicate = existingRecords.find(r => r.fileUrl === fileUrl);
+        const duplicate = existingRecords.find(r => r.pageUrl === pageUrl);
         if (duplicate) {
-          console.log(`[lurl] 跳過重複: ${fileUrl}`);
-          res.writeHead(200, corsHeaders());
-          res.end(JSON.stringify({ ok: true, duplicate: true, existingId: duplicate.id }));
+          // 檢查檔案是否真的存在
+          const filePath = path.join(DATA_DIR, duplicate.backupPath);
+          const fileExists = fs.existsSync(filePath);
+
+          if (fileExists) {
+            console.log(`[lurl] 跳過重複頁面: ${pageUrl}`);
+            res.writeHead(200, corsHeaders());
+            res.end(JSON.stringify({ ok: true, duplicate: true, existingId: duplicate.id }));
+          } else {
+            // 記錄存在但檔案不存在，更新 fileUrl（CDN 可能換了）並讓前端上傳
+            if (duplicate.fileUrl !== fileUrl) {
+              console.log(`[lurl] CDN URL 已更新: ${duplicate.fileUrl} → ${fileUrl}`);
+              // 更新記錄中的 fileUrl
+              updateRecordFileUrl(duplicate.id, fileUrl);
+            }
+            console.log(`[lurl] 重複頁面但檔案遺失，需要前端上傳: ${pageUrl}`);
+            res.writeHead(200, corsHeaders());
+            res.end(JSON.stringify({ ok: true, duplicate: true, id: duplicate.id, needUpload: true }));
+          }
           return;
         }
 
         ensureDirs();
+        // 先產生 ID，用於確保檔名唯一
+        const id = Date.now().toString(36);
+
         // 從 fileUrl 取得原始副檔名
         const urlExt = path.extname(new URL(fileUrl).pathname).toLowerCase() || (type === 'video' ? '.mp4' : '.jpg');
         const ext = ['.mp4', '.mov', '.webm', '.avi'].includes(urlExt) ? urlExt : (type === 'video' ? '.mp4' : '.jpg');
         const safeTitle = sanitizeFilename(title);
-        const filename = `${safeTitle}${ext}`;
+        // 檔名加上 ID 確保唯一性（同標題不同影片不會覆蓋）
+        const filename = `${safeTitle}_${id}${ext}`;
         const targetDir = type === 'video' ? VIDEOS_DIR : IMAGES_DIR;
         const folder = type === 'video' ? 'videos' : 'images';
         const backupPath = `${folder}/${filename}`; // 用正斜線，URL 才正確
 
         const record = {
-          id: Date.now().toString(36),
+          id,
           title,
           pageUrl,
           fileUrl,
           type,
           source: 'lurl',
           capturedAt: new Date().toISOString(),
-          backupPath
+          backupPath,
+          ...(ref && { ref }) // D卡文章連結（如果有）
         };
 
         appendRecord(record);
         console.log(`[lurl] 記錄已存: ${title}`);
 
-        // 用 pageUrl 當 referer，更真實
-        downloadFile(fileUrl, path.join(targetDir, filename), pageUrl).then(ok => {
-          console.log(`[lurl] 備份${ok ? '完成' : '失敗'}: ${filename}`);
+        // 後端用 cookies 嘗試下載（可能會失敗，但前端會補上傳）
+        downloadFile(fileUrl, path.join(targetDir, filename), pageUrl, cookies || '').then(ok => {
+          console.log(`[lurl] 後端備份${ok ? '完成' : '失敗'}: ${filename}${cookies ? ' (有cookie)' : ''}`);
         });
 
         res.writeHead(200, corsHeaders());
-        res.end(JSON.stringify({ ok: true }));
+        res.end(JSON.stringify({ ok: true, id: record.id, needUpload: true }));
       } catch (err) {
         console.error('[lurl] Error:', err.message);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/upload - 前端上傳 blob（支援分塊上傳）
+    if (req.method === 'POST' && urlPath === '/api/upload') {
+      try {
+        const id = req.headers['x-record-id'];
+        const chunkIndex = req.headers['x-chunk-index'];
+        const totalChunks = req.headers['x-total-chunks'];
+
+        if (!id) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '缺少 x-record-id header' }));
+          return;
+        }
+
+        // 找到對應的記錄
+        const records = readAllRecords();
+        const record = records.find(r => r.id === id);
+        if (!record) {
+          res.writeHead(404, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '找不到記錄' }));
+          return;
+        }
+
+        // 讀取 body（binary）
+        const chunks = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+        const buffer = Buffer.concat(chunks);
+
+        if (buffer.length === 0) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '沒有收到檔案資料' }));
+          return;
+        }
+
+        ensureDirs();
+        const targetDir = record.type === 'video' ? VIDEOS_DIR : IMAGES_DIR;
+        const filename = path.basename(record.backupPath);
+        const destPath = path.join(targetDir, filename);
+
+        // 分塊上傳
+        if (chunkIndex !== undefined && totalChunks !== undefined) {
+          const chunkDir = path.join(DATA_DIR, 'chunks', id);
+          if (!fs.existsSync(chunkDir)) {
+            fs.mkdirSync(chunkDir, { recursive: true });
+          }
+
+          // 存分塊
+          const chunkPath = path.join(chunkDir, `chunk_${chunkIndex}`);
+          fs.writeFileSync(chunkPath, buffer);
+          console.log(`[lurl] 分塊 ${parseInt(chunkIndex) + 1}/${totalChunks} 收到: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
+
+          // 檢查是否所有分塊都收到
+          const receivedChunks = fs.readdirSync(chunkDir).filter(f => f.startsWith('chunk_')).length;
+          if (receivedChunks === parseInt(totalChunks)) {
+            // 組裝完整檔案
+            console.log(`[lurl] 所有分塊收齊，組裝中...`);
+
+            // 同步寫入組裝檔案
+            const allChunks = [];
+            for (let i = 0; i < parseInt(totalChunks); i++) {
+              const chunkData = fs.readFileSync(path.join(chunkDir, `chunk_${i}`));
+              allChunks.push(chunkData);
+            }
+            const finalBuffer = Buffer.concat(allChunks);
+            fs.writeFileSync(destPath, finalBuffer);
+
+            // 清理分塊
+            fs.rmSync(chunkDir, { recursive: true });
+
+            console.log(`[lurl] 分塊上傳完成: ${filename} (${(finalBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+          }
+
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, chunk: parseInt(chunkIndex), total: parseInt(totalChunks) }));
+        } else {
+          // 單次上傳（小檔案）
+          fs.writeFileSync(destPath, buffer);
+          console.log(`[lurl] 前端上傳成功: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, size: buffer.length }));
+        }
+      } catch (err) {
+        console.error('[lurl] Upload error:', err.message);
         res.writeHead(500, corsHeaders());
         res.end(JSON.stringify({ ok: false, error: err.message }));
       }
@@ -527,12 +855,33 @@ module.exports = {
 
     // GET /api/records
     if (req.method === 'GET' && urlPath === '/api/records') {
-      const records = readAllRecords().reverse(); // 最新的在前
+      let records = readAllRecords().reverse(); // 最新的在前
       const type = query.type;
-      const filtered = type && type !== 'all' ? records.filter(r => r.type === type) : records;
+      const q = query.q;
+
+      // Type filter
+      if (type && type !== 'all') {
+        records = records.filter(r => r.type === type);
+      }
+
+      // Search filter (q parameter)
+      if (q) {
+        const searchTerm = q.toLowerCase();
+        records = records.filter(r =>
+          r.id.toLowerCase().includes(searchTerm) ||
+          (r.title && r.title.toLowerCase().includes(searchTerm)) ||
+          (r.pageUrl && r.pageUrl.toLowerCase().includes(searchTerm))
+        );
+      }
+
+      // 加入 fileExists 狀態
+      const recordsWithStatus = records.map(r => ({
+        ...r,
+        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath))
+      }));
 
       res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({ records: filtered, total: filtered.length }));
+      res.end(JSON.stringify({ records: recordsWithStatus, total: recordsWithStatus.length }));
       return;
     }
 
@@ -606,13 +955,46 @@ module.exports = {
         return;
       }
 
+      // 檢查本地檔案是否存在
+      const localFilePath = path.join(DATA_DIR, record.backupPath);
+      const fileExists = fs.existsSync(localFilePath);
+
       res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
-      res.end(viewPage(record));
+      res.end(viewPage(record, fileExists));
       return;
     }
 
-    // GET /files/videos/:filename 或 /files/images/:filename
-    if (req.method === 'GET' && urlPath.startsWith('/files/')) {
+    // POST /api/retry/:id - 重新下載檔案
+    if (req.method === 'POST' && urlPath.startsWith('/api/retry/')) {
+      const id = urlPath.replace('/api/retry/', '');
+      const records = readAllRecords();
+      const record = records.find(r => r.id === id);
+
+      if (!record) {
+        res.writeHead(404, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '記錄不存在' }));
+        return;
+      }
+
+      const targetDir = record.type === 'video' ? VIDEOS_DIR : IMAGES_DIR;
+      const localFilePath = path.join(DATA_DIR, record.backupPath);
+
+      // 用 pageUrl 當 Referer 來下載
+      const success = await downloadFile(record.fileUrl, localFilePath, record.pageUrl);
+
+      if (success) {
+        console.log(`[lurl] 重試下載成功: ${record.title}`);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true }));
+      } else {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '下載失敗，CDN 可能已過期' }));
+      }
+      return;
+    }
+
+    // GET/HEAD /files/videos/:filename 或 /files/images/:filename
+    if ((req.method === 'GET' || req.method === 'HEAD') && urlPath.startsWith('/files/')) {
       const filePath = decodeURIComponent(urlPath.replace('/files/', '')); // URL decode 中文檔名
 
       // 防止讀取資料夾
@@ -660,7 +1042,11 @@ module.exports = {
           'Content-Type': contentType,
           'Access-Control-Allow-Origin': '*'
         });
-        fs.createReadStream(fullFilePath, { start, end }).pipe(res);
+        if (req.method === 'HEAD') {
+          res.end();
+        } else {
+          fs.createReadStream(fullFilePath, { start, end }).pipe(res);
+        }
       } else {
         res.writeHead(200, {
           'Content-Type': contentType,
@@ -668,7 +1054,11 @@ module.exports = {
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*'
         });
-        fs.createReadStream(fullFilePath).pipe(res);
+        if (req.method === 'HEAD') {
+          res.end();
+        } else {
+          fs.createReadStream(fullFilePath).pipe(res);
+        }
       }
       return;
     }
