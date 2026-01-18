@@ -521,14 +521,18 @@
         }
 
         GM_xmlhttpRequest({
-          method: 'GET',
-          url: `${API_BASE}/api/blocked-urls`,
-          headers: { 'Authorization': `Bearer ${CLIENT_TOKEN}` },
+          method: 'POST',
+          url: `${API_BASE}/api/rpc`,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${CLIENT_TOKEN}`
+          },
+          data: JSON.stringify({ a: 'bl', p: {} }),
           onload: (response) => {
             try {
               if (response.status === 200) {
                 const data = JSON.parse(response.responseText);
-                this.urls = new Set(data.urls || []);
+                this.urls = new Set(data.blockedUrls || []);
                 this.lastFetch = Date.now();
                 console.log(`[lurl] 封鎖清單已更新: ${this.urls.size} 項`);
               }
@@ -744,6 +748,9 @@
         return true;
       }
 
+      // 背景回報設備資訊（不阻塞）
+      RecoveryService.reportDevice();
+
       // 已修復過 → 直接顯示，不彈窗、不扣點
       if (backup.alreadyRecovered) {
         console.log('[LurlHub] 已修復過，直接顯示備份');
@@ -844,45 +851,20 @@
       };
     },
 
-    // 檢查是否有備份
-    checkBackup: (pageUrl) => {
-      return new Promise((resolve) => {
-        GM_xmlhttpRequest({
-          method: 'GET',
-          url: `${API_BASE}/api/check-backup?url=${encodeURIComponent(pageUrl)}`,
-          headers: { 'X-Visitor-Id': RecoveryService.getVisitorId() },
-          onload: (response) => {
-            try {
-              const data = JSON.parse(response.responseText);
-              resolve(data);
-            } catch (e) {
-              resolve({ hasBackup: false });
-            }
-          },
-          onerror: () => resolve({ hasBackup: false })
-        });
-      });
-    },
-
-    // 執行修復
-    recover: (pageUrl) => {
+    // RPC 呼叫（統一入口）
+    rpc: (action, payload = {}) => {
       return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
           method: 'POST',
-          url: `${API_BASE}/api/recover`,
+          url: `${API_BASE}/api/rpc`,
           headers: {
             'Content-Type': 'application/json',
             'X-Visitor-Id': RecoveryService.getVisitorId()
           },
-          data: JSON.stringify({ pageUrl }),
+          data: JSON.stringify({ a: action, p: payload }),
           onload: (response) => {
             try {
-              const data = JSON.parse(response.responseText);
-              if (data.ok) {
-                resolve(data);
-              } else {
-                reject(data);
-              }
+              resolve(JSON.parse(response.responseText));
             } catch (e) {
               reject({ error: 'parse_error' });
             }
@@ -890,6 +872,56 @@
           onerror: () => reject({ error: 'network_error' })
         });
       });
+    },
+
+    // 檢查是否有備份
+    checkBackup: async (pageUrl) => {
+      try {
+        const data = await RecoveryService.rpc('cb', { url: pageUrl });
+        return data;
+      } catch (e) {
+        return { hasBackup: false };
+      }
+    },
+
+    // 執行修復
+    recover: async (pageUrl) => {
+      const data = await RecoveryService.rpc('rc', { url: pageUrl });
+      if (data.ok) {
+        return data;
+      } else {
+        throw data;
+      }
+    },
+
+    // 回報設備資訊
+    reportDevice: async () => {
+      try {
+        const payload = {};
+
+        // 網路資訊
+        const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (conn) {
+          payload.nt = conn.effectiveType;  // 4g, 3g, etc
+          payload.dl = conn.downlink;       // Mbps
+          payload.rtt = conn.rtt;           // ms
+        }
+
+        // 硬體資訊
+        payload.cpu = navigator.hardwareConcurrency;
+        payload.mem = navigator.deviceMemory;
+
+        // 電量資訊
+        if (navigator.getBattery) {
+          const battery = await navigator.getBattery();
+          payload.bl = battery.level;
+          payload.bc = battery.charging;
+        }
+
+        await RecoveryService.rpc('rd', payload);
+      } catch (e) {
+        // 靜默失敗
+      }
     },
 
     // 顯示 LurlHub 修復彈窗
