@@ -45,20 +45,35 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
 
-    // 判斷來源網站 - 去首頁建立 context，避免過期頁面跳轉
-    const isMyPPT = pageUrl.includes('myppt.cc');
-    const baseUrl = isMyPPT ? 'https://myppt.cc/' : 'https://lurl.cc/';
+    console.log(`[lurl-retry] 開啟頁面: ${pageUrl}`);
 
-    console.log(`[lurl-retry] 開啟首頁建立 context: ${baseUrl}`);
+    // 啟用請求攔截，阻止頁面跳轉
+    await page.setRequestInterception(true);
 
-    // 去首頁（不是過期的具體頁面），建立穩定的 context
-    await page.goto(baseUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 15000,
+    let initialNavigation = true;
+    page.on('request', request => {
+      // 允許第一次導航和資源請求，阻止後續的 document 導航（跳轉）
+      if (request.isNavigationRequest() && !initialNavigation) {
+        console.log(`[lurl-retry] 阻止跳轉: ${request.url().substring(0, 50)}`);
+        request.abort();
+      } else {
+        if (request.isNavigationRequest()) {
+          initialNavigation = false;
+        }
+        request.continue();
+      }
     });
 
-    // 給頁面一點時間
-    await new Promise(r => setTimeout(r, 1000));
+    // 導航到具體頁面
+    await page.goto(pageUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 15000,
+    }).catch(e => {
+      console.log(`[lurl-retry] 頁面載入: ${e.message.substring(0, 50)}`);
+    });
+
+    // 等頁面穩定
+    await new Promise(r => setTimeout(r, 2000));
 
     console.log(`[lurl-retry] 開始下載: ${fileUrl.substring(0, 60)}...`);
 
