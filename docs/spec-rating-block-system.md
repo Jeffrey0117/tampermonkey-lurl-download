@@ -1,27 +1,30 @@
 # 評價與封鎖系統規格
 
-> 版本：v1.0
+> 版本：v2.0
 > 日期：2026-01-18
-> 狀態：草稿
+> 狀態：討論中
 
 ---
 
 ## 1. 概述
 
 ### 目標
-- 讓使用者對內容進行評價（讚/倒讚）
+- 讓使用者對內容進行**公開評分**（讚/倒讚計數）
+- 支援依照評分排序（熱門內容優先）
 - 封鎖不想要的內容，避免重複下載
 - 優化 UI，讓維護功能更直觀
 
-### 影響範圍
-- `server/lurl.js` - API 端點、資料結構、頁面 UI
-- `lurlDownloader.user.js` - 封鎖檢查邏輯
+### 設計原則
+- **評分是計數器**：類似 YouTube 的讚/倒讚，顯示累計數字
+- **一人一票**：每個用戶對每個內容只能投一次票
+- **可改變選擇**：可以從讚改成倒讚（或反過來）
+- **封鎖是個人行為**：封鎖後檔案刪除，記錄保留用於阻擋重複下載
 
 ---
 
-## 2. 資料結構變更
+## 2. 資料結構
 
-### 2.1 Record 新增欄位
+### 2.1 Record 欄位（修正版）
 
 ```javascript
 {
@@ -31,294 +34,210 @@
   pageUrl: "https://lurl.cc/xxx",
   fileUrl: "https://cdn.../xxx.mp4",
   type: "video",
+  source: "lurl" | "myppt",
   backupPath: "videos/xxx.mp4",
   thumbnailPath: "thumbnails/xxx.jpg",
-  fileExists: true,
+  capturedAt: "2026-01-18T12:00:00Z",
 
-  // === 新增欄位 ===
-  rating: "like" | "dislike" | null,  // 評價狀態
-  blocked: false,                      // 是否封鎖
-  blockedAt: null                      // 封鎖時間 (ISO string)
+  // D卡來源（可選，有此欄位才顯示「返回D卡」按鈕）
+  ref: "https://www.dcard.tw/f/sex/p/123456",  // ← 關鍵欄位
+
+  // === 評分欄位（v2.0 修正）===
+  likeCount: 0,           // 讚的數量
+  dislikeCount: 0,        // 倒讚的數量
+  myVote: "like" | "dislike" | null,  // 當前用戶的投票（單機版只有一個用戶）
+
+  // === 封鎖欄位 ===
+  blocked: false,
+  blockedAt: null
 }
 ```
 
-### 2.2 封鎖清單快取（Userscript 用）
+### 2.2 與 v1.0 的差異
 
-Server 提供一個輕量 API 回傳所有已封鎖的 `fileUrl`：
+| v1.0 | v2.0 | 說明 |
+|------|------|------|
+| `rating: "like"` | `likeCount: 5` | 從狀態改為計數 |
+| - | `dislikeCount: 2` | 新增倒讚計數 |
+| - | `myVote: "like"` | 記錄當前用戶投票 |
+
+### 2.3 關於 `ref` 欄位（D卡來源）
+
+**問題**：有些影片沒有「返回D卡」按鈕
+
+**原因**：
+- `ref` 欄位只在從 D卡 點進 lurl/myppt 時才會傳遞
+- 如果用戶直接開 lurl.cc 頁面（不是從 D卡來的），就不會有 `ref`
+- 早期版本可能沒有記錄這個欄位
+
+**解法**：
+- View 頁面：只在 `ref` 存在時顯示「返回D卡」按鈕
+- 目前已實作（需確認）
+
+---
+
+## 3. UI 變更
+
+### 3.1 Browse 頁面 Tab（修正版）
+
+```
+[全部] [影片] [圖片] [未下載] [🚫 已封鎖]
+                              ↑ 移除「喜歡」Tab
+```
+
+**移除「喜歡」Tab 的原因**：
+- 評分是公開計數，不是個人收藏
+- 改用「排序」功能來找熱門內容
+
+### 3.2 排序功能（新增）
+
+```html
+<div class="sort-bar">
+  <select id="sortBy">
+    <option value="newest">最新</option>
+    <option value="oldest">最舊</option>
+    <option value="popular">最多讚</option>
+    <option value="controversial">最多倒讚</option>
+  </select>
+</div>
+```
+
+### 3.3 卡片評分顯示（修正版）
+
+```
+┌─────────────────────────────┐
+│  [縮圖]                      │
+├─────────────────────────────┤
+│  標題                        │
+│  2026/01/18  #mkhaw9        │
+│                              │
+│  👍 12   👎 3   [🚫]         │  ← 顯示計數
+│  ──────────────────         │
+│  [我的讚是亮的]              │  ← 如果投過票，按鈕高亮
+└─────────────────────────────┘
+```
+
+### 3.4 View 頁面「返回D卡」按鈕
 
 ```javascript
-// GET /api/blocked-urls
-{
-  "urls": [
-    "https://cdn.../blocked1.mp4",
-    "https://cdn.../blocked2.jpg"
-  ],
-  "count": 2,
-  "updatedAt": "2026-01-18T12:00:00Z"
-}
+// 只在 ref 存在時顯示
+${record.ref
+  ? `<a href="${record.ref}" class="btn btn-secondary" target="_blank">返回D卡</a>`
+  : ''}
 ```
 
 ---
 
-## 3. Server API 變更
+## 4. API 變更
 
-### 3.1 評價 API
+### 4.1 評分 API（修正版）
 
 ```
-POST /api/records/:id/rate
+POST /api/records/:id/vote
 Content-Type: application/json
 
-{ "rating": "like" | "dislike" | null }
+{ "vote": "like" | "dislike" | null }  // null = 取消投票
 
 Response:
-{ "ok": true }
+{
+  "ok": true,
+  "likeCount": 13,      // 更新後的數字
+  "dislikeCount": 3,
+  "myVote": "like"
+}
 ```
 
-### 3.2 封鎖 API
+**邏輯**：
+```javascript
+// 投票邏輯
+if (newVote === oldVote) {
+  // 取消投票
+  myVote = null;
+  if (oldVote === 'like') likeCount--;
+  if (oldVote === 'dislike') dislikeCount--;
+} else {
+  // 改變投票
+  if (oldVote === 'like') likeCount--;
+  if (oldVote === 'dislike') dislikeCount--;
+  if (newVote === 'like') likeCount++;
+  if (newVote === 'dislike') dislikeCount++;
+  myVote = newVote;
+}
+```
+
+### 4.2 查詢 API 支援排序
+
+```
+GET /api/records?sort=popular    // 依讚數排序（高到低）
+GET /api/records?sort=newest     // 依時間排序（新到舊，預設）
+GET /api/records?sort=oldest     // 依時間排序（舊到新）
+```
+
+### 4.3 封鎖 API（不變）
 
 ```
 POST /api/records/:id/block
-Content-Type: application/json
-
-{ "block": true }  // true=封鎖, false=解除封鎖
-
-Response:
-{ "ok": true, "deleted": true }  // deleted 表示有刪除本地檔案
-```
-
-**封鎖時執行**：
-1. 設定 `blocked: true`, `blockedAt: new Date().toISOString()`
-2. 刪除本地檔案 (`backupPath`)
-3. 刪除縮圖 (`thumbnailPath`)
-4. 保留 JSONL 記錄（用於後續阻擋）
-
-**解除封鎖時執行**：
-1. 設定 `blocked: false`, `blockedAt: null`
-2. 設定 `fileExists: false`（需要重新下載）
-
-### 3.3 封鎖清單 API（給 Userscript）
-
-```
-GET /api/blocked-urls
-Authorization: Bearer {CLIENT_TOKEN}
-
-Response:
-{
-  "urls": ["https://...", "https://..."],
-  "count": 123,
-  "updatedAt": "2026-01-18T12:00:00Z"
-}
-```
-
-### 3.4 修改現有 API
-
-#### GET /api/records
-新增 query 參數：
-- `blocked=false` - 預設不顯示封鎖的
-- `blocked=true` - 只顯示封鎖的
-- `rating=like` - 只顯示讚的
-
-#### POST /capture
-新增封鎖檢查：
-```javascript
-// 檢查 fileUrl 是否已被封鎖
-const blockedRecord = existingRecords.find(r => r.fileUrl === fileUrl && r.blocked);
-if (blockedRecord) {
-  return { ok: true, blocked: true, message: '此內容已被封鎖' };
-}
+{ "block": true }
 ```
 
 ---
 
-## 4. Userscript 變更
+## 5. 問題討論
 
-### 4.1 封鎖清單快取
+### Q1: 單機 vs 多用戶？
 
-```javascript
-const BlockedCache = {
-  urls: new Set(),
-  lastFetch: 0,
-  CACHE_DURATION: 5 * 60 * 1000, // 5 分鐘快取
+目前是單機系統（只有一個管理員），所以：
+- `myVote` 就是唯一用戶的投票
+- `likeCount` 最多只會是 0 或 1
 
-  async refresh() {
-    if (Date.now() - this.lastFetch < this.CACHE_DURATION) return;
+**未來如果要多用戶**：
+- 需要 `votes` 表記錄每個用戶的投票
+- `myVote` 改從 session/cookie 判斷
 
-    try {
-      const res = await GM_xmlhttpRequest({
-        method: 'GET',
-        url: `${API_BASE}/api/blocked-urls`,
-        headers: { 'Authorization': `Bearer ${CLIENT_TOKEN}` }
-      });
-      const data = JSON.parse(res.responseText);
-      this.urls = new Set(data.urls);
-      this.lastFetch = Date.now();
-    } catch (e) {
-      console.error('[lurl] 無法取得封鎖清單:', e);
-    }
-  },
+**建議**：先按單機實作，資料結構預留擴充空間
 
-  isBlocked(fileUrl) {
-    return this.urls.has(fileUrl);
-  }
-};
-```
+### Q2: 沒有 ref 的舊記錄怎麼辦？
 
-### 4.2 Capture 前檢查
+選項：
+1. **不處理** - 舊記錄就是沒有，新記錄會有
+2. **批次修復** - 寫腳本從 pageUrl 反推 ref（不可行，因為無法知道當初從哪個 D卡文章來）
+3. **手動補充** - 在 View 頁面加「補充 D卡連結」功能
 
-```javascript
-// 在 sendToAPI 之前
-await BlockedCache.refresh();
-if (BlockedCache.isBlocked(fileUrl)) {
-  console.log('[lurl] 跳過已封鎖內容:', fileUrl);
-  return; // 不發送 API
-}
-```
+**建議**：選項 1，接受舊記錄沒有 ref
 
-### 4.3 效率考量
+### Q3: 評分要顯示在哪？
 
-| 方案 | 優點 | 缺點 |
-|------|------|------|
-| 每次 capture 都查 API | 即時準確 | 多一次 API call |
-| 本地快取封鎖清單 | 減少 API call | 5 分鐘內的新封鎖可能漏掉 |
-| Server 在 capture 回傳封鎖狀態 | 不需額外 API | 已經發送請求了才知道 |
-
-**建議採用**：本地快取 + Server 雙重檢查
-1. Userscript 快取封鎖清單，本地先過濾（減少無效請求）
-2. Server capture 時再次檢查（確保準確）
+- Browse 卡片：顯示 `👍 12  👎 3`
+- View 頁面：顯示計數 + 投票按鈕
 
 ---
 
-## 5. UI 變更
+## 6. 修改項目清單
 
-### 5.1 Admin 維護面板改橫向
+### 需要修改的（對比 v1.0 已實作）
 
-```html
-<div class="maintenance-grid">
-  <div class="maintenance-item">
-    <span class="icon">🔧</span>
-    <span class="label">修復 Untitled</span>
-    <button onclick="fixUntitled()">執行</button>
-    <span class="status" id="untitledStatus"></span>
-  </div>
-  <div class="maintenance-item">
-    <span class="icon">🔄</span>
-    <span class="label">重試下載</span>
-    <button onclick="retryFailed()">執行</button>
-    <span class="status" id="retryStatus"></span>
-  </div>
-  <!-- ... 其他按鈕 ... -->
-</div>
-```
+| 項目 | v1.0 已實作 | v2.0 需求 | 動作 |
+|------|------------|----------|------|
+| 資料結構 | `rating` | `likeCount`, `dislikeCount`, `myVote` | 改 |
+| API | `/rate` | `/vote` + 計數邏輯 | 改 |
+| Browse Tab | 有「喜歡」Tab | 移除「喜歡」Tab | 刪 |
+| 排序功能 | 無 | 依讚數排序 | 新增 |
+| 卡片顯示 | 高亮按鈕 | 顯示計數 + 高亮 | 改 |
+| D卡按鈕 | ? | 只在 ref 存在時顯示 | 確認 |
 
-```css
-.maintenance-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 15px;
-}
-.maintenance-item {
-  background: #2a2a2a;
-  padding: 15px;
-  border-radius: 8px;
-  text-align: center;
-}
-```
+### 不需要改的
 
-### 5.2 Browse 卡片新增評價按鈕
-
-```html
-<div class="card">
-  <div class="card-thumb">...</div>
-  <div class="card-info">
-    <div class="card-title">...</div>
-    <div class="card-meta">...</div>
-    <div class="card-actions">
-      <button class="btn-rate like" onclick="rate('${id}', 'like')">👍</button>
-      <button class="btn-rate dislike" onclick="rate('${id}', 'dislike')">👎</button>
-      <button class="btn-block" onclick="block('${id}')">🚫</button>
-    </div>
-  </div>
-</div>
-```
-
-```css
-.card-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.btn-rate, .btn-block {
-  padding: 4px 8px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  background: #333;
-}
-.btn-rate:hover { background: #444; }
-.btn-rate.active.like { background: #4CAF50; }
-.btn-rate.active.dislike { background: #f44336; }
-.btn-block:hover { background: #c62828; }
-```
-
-### 5.3 Browse 新增 Tab
-
-```html
-<div class="tabs">
-  <button class="tab" data-type="all">全部</button>
-  <button class="tab" data-type="video">影片</button>
-  <button class="tab" data-type="image">圖片</button>
-  <button class="tab" data-type="pending">未下載</button>
-  <button class="tab" data-type="liked">❤️ 喜歡</button>
-  <button class="tab" data-type="blocked">🚫 已封鎖</button>
-</div>
-```
+- 封鎖功能（維持原樣）
+- 封鎖清單快取（維持原樣）
+- 維護面板橫向 Grid（已完成）
 
 ---
 
-## 6. 成本與效能分析
+## 7. 下一步
 
-### API 呼叫次數
+請確認：
+1. 單機版的 likeCount 最多 0/1，這樣 OK 嗎？
+2. 移除「喜歡」Tab，改用排序功能，這樣 OK 嗎？
+3. 舊記錄沒有 ref 就接受，不補救，OK 嗎？
 
-| 情境 | 現在 | 改後 |
-|------|------|------|
-| 開啟頁面 | 1 次 capture | 1 次 capture |
-| 封鎖檢查 | 無 | +1 次 /api/blocked-urls（每 5 分鐘） |
-| 評價操作 | 無 | +1 次 /api/records/:id/rate |
-| 封鎖操作 | 無 | +1 次 /api/records/:id/block |
-
-### 資料大小估算
-
-假設封鎖 1000 個項目：
-- 每個 fileUrl 約 80 bytes
-- 總計 80KB（gzip 後約 15KB）
-- 每 5 分鐘傳一次，可接受
-
-### 效能優化建議
-
-1. **封鎖清單分頁**：若超過 10000 筆，改用 bloom filter 或分頁
-2. **ETag 快取**：Server 回傳 ETag，Userscript 用 If-None-Match 避免重複下載
-3. **WebSocket**：未來可改用 WebSocket 即時推送封鎖更新
-
----
-
-## 7. 實作順序
-
-1. [ ] Server: 新增 rating/blocked 欄位處理
-2. [ ] Server: 新增 API 端點 (rate, block, blocked-urls)
-3. [ ] Server: 修改 /api/records 支援 blocked/rating 過濾
-4. [ ] Server: 修改 capture 檢查封鎖
-5. [ ] Server: Admin 維護面板改橫向
-6. [ ] Server: Browse 卡片加評價/封鎖按鈕
-7. [ ] Server: Browse 新增 Tab (喜歡/已封鎖)
-8. [ ] Userscript: 新增 BlockedCache
-9. [ ] Userscript: capture 前檢查封鎖
-10. [ ] 測試與同步兩個 repo
-
----
-
-## 8. 未來擴充
-
-- 標籤系統 (tags)
-- 收藏夾 (collections)
-- 批次操作
-- 匯出/匯入評價資料
+確認後我會開始修改實作。

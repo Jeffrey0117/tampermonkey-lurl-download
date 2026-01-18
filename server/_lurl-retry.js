@@ -1,6 +1,7 @@
 /**
  * Lurl 備援下載模組
  * 用 puppeteer-extra + stealth 繞過 Cloudflare
+ * 支援並行下載加速
  */
 
 const puppeteer = require('puppeteer-extra');
@@ -12,6 +13,9 @@ const path = require('path');
 puppeteer.use(StealthPlugin());
 
 let browser = null;
+
+// 並發數量（同時開幾個 tab）
+const CONCURRENCY = 4;
 
 async function initBrowser() {
   if (!browser) {
@@ -56,31 +60,25 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
       path: '/',
     });
 
-    console.log(`[lurl-retry] 開啟頁面: ${pageUrl}`);
-
-    // 導航到具體頁面
+    // 導航到具體頁面（減少 log 輸出）
     try {
       await page.goto(pageUrl, {
-        waitUntil: 'networkidle2',
-        timeout: 30000,
+        waitUntil: 'domcontentloaded', // 改用 domcontentloaded，比 networkidle2 快
+        timeout: 20000,
       });
-      console.log(`[lurl-retry] 頁面載入完成: ${page.url()}`);
     } catch (e) {
-      console.log(`[lurl-retry] 頁面載入: ${e.message.substring(0, 80)}`);
+      // 忽略 timeout，繼續嘗試下載
     }
 
     // 檢查是否被 Cloudflare 擋
     const currentUrl = page.url();
     if (currentUrl.includes('challenges.cloudflare.com')) {
-      console.log('[lurl-retry] 偵測到 Cloudflare 驗證，等待通過...');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-      console.log(`[lurl-retry] 驗證後 URL: ${page.url()}`);
+      console.log('[lurl-retry] Cloudflare 驗證中...');
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
     }
 
-    // 等頁面穩定
-    await new Promise(r => setTimeout(r, 2000));
-
-    console.log(`[lurl-retry] 開始下載: ${fileUrl.substring(0, 60)}...`);
+    // 等頁面穩定（減少到 500ms）
+    await new Promise(r => setTimeout(r, 500));
 
     // 在頁面 context 中下載
     const result = await page.evaluate(async (cdnUrl) => {
@@ -129,11 +127,11 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
     const buffer = Buffer.from(result.data, 'base64');
     fs.writeFileSync(destPath, buffer);
 
-    console.log(`[lurl-retry] ✅ 下載成功: ${destPath} (${(result.size / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[lurl-retry] ✅ ${path.basename(destPath)} (${(result.size / 1024 / 1024).toFixed(2)} MB)`);
     return { success: true, size: result.size };
 
   } catch (err) {
-    console.error(`[lurl-retry] ❌ 失敗: ${err.message}`);
+    console.error(`[lurl-retry] ❌ ${path.basename(destPath)}: ${err.message}`);
     return { success: false, error: err.message };
   } finally {
     await page.close();
@@ -145,26 +143,49 @@ async function retryRecord(record, dataDir) {
   return await downloadInPageContext(record.pageUrl, record.fileUrl, destPath);
 }
 
-async function batchRetry(records, dataDir, onProgress) {
+/**
+ * 並行批次重試
+ * @param {Array} records - 要重試的記錄
+ * @param {string} dataDir - 資料目錄
+ * @param {Function} onProgress - 進度回調 (completed, total, record, result)
+ * @param {number} concurrency - 並發數量（預設 4）
+ */
+async function batchRetry(records, dataDir, onProgress, concurrency = CONCURRENCY) {
   let successCount = 0;
   const successIds = [];
+  let completed = 0;
 
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i];
-    if (onProgress) onProgress(i + 1, records.length, record, null);
+  console.log(`[lurl-retry] 開始並行下載 ${records.length} 個檔案（並發數: ${concurrency}）`);
 
-    const result = await retryRecord(record, dataDir);
-    if (result.success) {
-      successCount++;
-      successIds.push(record.id);
-    }
+  // 分批處理
+  const chunks = [];
+  for (let i = 0; i < records.length; i += concurrency) {
+    chunks.push(records.slice(i, i + concurrency));
+  }
 
-    if (i < records.length - 1) {
-      await new Promise(r => setTimeout(r, 1000));
-    }
+  for (const chunk of chunks) {
+    // 並行處理這批
+    const promises = chunk.map(async (record) => {
+      const result = await retryRecord(record, dataDir);
+      completed++;
+
+      if (result.success) {
+        successCount++;
+        successIds.push(record.id);
+      }
+
+      if (onProgress) {
+        onProgress(completed, records.length, record, result);
+      }
+
+      return { record, result };
+    });
+
+    await Promise.all(promises);
   }
 
   await closeBrowser();
+  console.log(`[lurl-retry] 完成！成功: ${successCount}/${records.length}`);
   return { successCount, successIds, total: records.length };
 }
 
@@ -174,4 +195,5 @@ module.exports = {
   downloadInPageContext,
   retryRecord,
   batchRetry,
+  CONCURRENCY,
 };

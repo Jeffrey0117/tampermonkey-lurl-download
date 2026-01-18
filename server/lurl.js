@@ -25,7 +25,7 @@ const { pipeline } = require('stream/promises');
 // 備援下載模組 (Puppeteer - 在頁面 context 下載)
 let lurlRetry = null;
 try {
-  lurlRetry = require('./lurl-retry');
+  lurlRetry = require('./_lurl-retry');
   console.log('[lurl] ✅ Puppeteer 備援模組已載入');
 } catch (e) {
   console.log('[lurl] ⚠️ Puppeteer 備援模組未載入:', e.message);
@@ -47,6 +47,20 @@ const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 
 // 修復服務設定
 const FREE_QUOTA = 3;
+
+// SSE 即時日誌客戶端
+const sseClients = new Set();
+
+function broadcastLog(log) {
+  const data = `data: ${JSON.stringify(log)}\n\n`;
+  sseClients.forEach(client => {
+    try {
+      client.write(data);
+    } catch (e) {
+      sseClients.delete(client);
+    }
+  });
+}
 
 // ==================== 安全函數 ====================
 
@@ -242,6 +256,13 @@ async function generateVideoThumbnail(videoPath, thumbnailPath) {
 function appendRecord(record) {
   ensureDirs();
   fs.appendFileSync(RECORDS_FILE, JSON.stringify(record) + '\n', 'utf8');
+
+  // 廣播到 SSE 客戶端
+  broadcastLog({
+    time: record.capturedAt,
+    type: record.backupStatus === 'completed' ? 'upload' : (record.backupStatus === 'failed' ? 'error' : 'view'),
+    message: `${record.type === 'video' ? '影片' : '圖片'}: ${record.title || record.pageUrl}`
+  });
 }
 
 function updateRecordFileUrl(id, newFileUrl) {
@@ -2171,29 +2192,75 @@ module.exports = {
       return;
     }
 
-    // GET /api/stats (需要登入)
+    // GET /api/stats - 公開基本統計（供 dashboard 使用）
     if (req.method === 'GET' && urlPath === '/api/stats') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, corsHeaders());
-        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+      const records = readAllRecords();
+      const totalRecords = records.length;
+      const totalVideos = records.filter(r => r.type === 'video').length;
+      const totalImages = records.filter(r => r.type === 'image').length;
+
+      // 如果是登入狀態，返回更多資訊
+      if (isAdminAuthenticated(req)) {
+        const urlCounts = {};
+        records.forEach(r => {
+          urlCounts[r.pageUrl] = (urlCounts[r.pageUrl] || 0) + 1;
+        });
+        const topUrls = Object.entries(urlCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([pageUrl, count]) => ({ pageUrl, count }));
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ total: totalRecords, totalRecords, totalVideos, totalImages, videos: totalVideos, images: totalImages, topUrls }));
         return;
       }
-      const records = readAllRecords();
-      const videos = records.filter(r => r.type === 'video').length;
-      const images = records.filter(r => r.type === 'image').length;
 
-      // 人氣排行（同一 pageUrl 出現次數）
-      const urlCounts = {};
-      records.forEach(r => {
-        urlCounts[r.pageUrl] = (urlCounts[r.pageUrl] || 0) + 1;
-      });
-      const topUrls = Object.entries(urlCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([pageUrl, count]) => ({ pageUrl, count }));
+      // 公開版本只返回基本統計
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ totalRecords, totalVideos, totalImages }));
+      return;
+    }
+
+    // GET /api/logs - 取得最近操作日誌
+    if (req.method === 'GET' && urlPath === '/api/logs') {
+      const records = readAllRecords();
+      // 將最近的記錄轉換為日誌格式
+      const logs = records
+        .slice(-50)
+        .reverse()
+        .map(r => ({
+          time: r.capturedAt,  // 正確的欄位名稱
+          type: r.backupStatus === 'completed' ? 'upload' : (r.backupStatus === 'failed' ? 'error' : 'view'),
+          message: `${r.type === 'video' ? '影片' : '圖片'}: ${r.title || r.pageUrl}`
+        }));
 
       res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({ total: records.length, videos, images, topUrls }));
+      res.end(JSON.stringify({ logs }));
+      return;
+    }
+
+    // GET /api/logs/stream - SSE 即時日誌串流
+    if (req.method === 'GET' && urlPath === '/api/logs/stream') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+
+      // 送出連接成功訊息
+      res.write(`data: ${JSON.stringify({ type: 'connected', message: '已連接即時日誌' })}\n\n`);
+
+      // 加入客戶端列表
+      sseClients.add(res);
+      console.log(`[lurl] SSE 客戶端連接，目前 ${sseClients.size} 個`);
+
+      // 客戶端斷開時移除
+      req.on('close', () => {
+        sseClients.delete(res);
+        console.log(`[lurl] SSE 客戶端斷開，剩餘 ${sseClients.size} 個`);
+      });
+
       return;
     }
 

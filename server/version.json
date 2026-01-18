@@ -1,0 +1,8 @@
+{
+  "latestVersion": "4.8",
+  "minVersion": "4.0.0",
+  "message": "新增版本檢查機制，可自動收到更新通知",
+  "updateUrl": "https://github.com/Jeffrey0117/tampermonkey-lurl-download/raw/main/lurlDownloader.user.js",
+  "forceUpdate": false,
+  "announcement": ""
+}

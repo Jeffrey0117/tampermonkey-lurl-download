@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v4.9
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.1
 // @namespace    http://tampermonkey.net/
-// @version      4.9
+// @version      5.1
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -24,6 +24,8 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/18 v5.1 - 重構品牌卡片組件，正常解鎖也顯示 LurlHub 品牌
+  2026/01/18 v5.0 - 修復成功頁面新增 LurlHub 品牌卡片
   2026/01/18 v4.8 - 新增版本檢查機制，可收到更新通知
   2026/01/17 v4.7 - 移除貢獻者追蹤與 VIP 提示（保持低調）
   2026/01/17 v4.5 - 分塊上傳（10MB/塊），解決大檔案 postMessage 限制
@@ -548,6 +550,103 @@
     }
   };
 
+  // ==================== LurlHub 品牌卡片 ====================
+  const LurlHubBrand = {
+    // 品牌卡片樣式（只注入一次）
+    injectStyles: () => {
+      if (document.getElementById('lurlhub-brand-styles')) return;
+      const style = document.createElement('style');
+      style.id = 'lurlhub-brand-styles';
+      style.textContent = `
+        .lurlhub-brand-card {
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+          border-radius: 12px;
+          padding: 16px 20px;
+          max-width: 320px;
+          margin: 15px auto;
+          text-align: center;
+          box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+          border: 1px solid rgba(255,255,255,0.1);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .lurlhub-brand-link {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          text-decoration: none;
+          padding: 8px;
+          border-radius: 8px;
+          transition: background 0.2s;
+        }
+        .lurlhub-brand-link:hover {
+          background: rgba(255,255,255,0.05);
+        }
+        .lurlhub-brand-logo {
+          width: 40px !important;
+          height: 40px !important;
+          border-radius: 8px;
+          flex-shrink: 0;
+        }
+        .lurlhub-brand-text {
+          text-align: left;
+        }
+        .lurlhub-brand-name {
+          font-size: 16px;
+          font-weight: bold;
+          color: #fff;
+        }
+        .lurlhub-brand-slogan {
+          font-size: 12px;
+          color: #3b82f6;
+          margin-top: 2px;
+        }
+        .lurlhub-success-h1 {
+          text-align: center;
+          color: #10b981;
+          font-size: 22px;
+          margin: 20px 0 10px 0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+      `;
+      document.head.appendChild(style);
+    },
+
+    // 建立品牌卡片元素
+    createCard: (slogan = '受不了過期連結？我們搞定 →') => {
+      LurlHubBrand.injectStyles();
+      const card = document.createElement('div');
+      card.className = 'lurlhub-brand-card';
+      card.innerHTML = `
+        <a href="${API_BASE}/browse" target="_blank" class="lurlhub-brand-link">
+          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-brand-logo" onerror="this.style.display='none'">
+          <div class="lurlhub-brand-text">
+            <div class="lurlhub-brand-name">LurlHub</div>
+            <div class="lurlhub-brand-slogan">${slogan}</div>
+          </div>
+        </a>
+      `;
+      return card;
+    },
+
+    // 建立成功標題 h1
+    createSuccessH1: (text = '✅ 拯救過期資源成功') => {
+      LurlHubBrand.injectStyles();
+      const h1 = document.createElement('h1');
+      h1.className = 'lurlhub-success-h1';
+      h1.textContent = text;
+      return h1;
+    },
+
+    // 在元素後面插入品牌卡片
+    insertAfter: (targetElement, slogan) => {
+      if (!targetElement) return;
+      // 防止重複插入
+      if (targetElement.nextElementSibling?.classList?.contains('lurlhub-brand-card')) return;
+      const card = LurlHubBrand.createCard(slogan);
+      targetElement.insertAdjacentElement('afterend', card);
+    }
+  };
+
   // ==================== LurlHub 修復服務 ====================
   const RecoveryService = {
     // 取得或建立訪客 ID
@@ -906,11 +1005,11 @@
           lottie.replaceWith(newElement);
         }
 
-        // 3. 在圖片/影片下面加上成功訊息
-        const successH1 = document.createElement('h1');
-        successH1.textContent = '拯救過期資源成功 ✅';
-        successH1.style.cssText = 'text-align: center; color: #28a745; margin: 20px 0;';
+        // 3. 在圖片/影片下面加上成功標題 + 品牌卡片
+        const successH1 = LurlHubBrand.createSuccessH1('✅ 拯救過期資源成功');
+        const brandCard = LurlHubBrand.createCard('受不了過期連結？我們搞定 →');
         newElement.insertAdjacentElement('afterend', successH1);
+        successH1.insertAdjacentElement('afterend', brandCard);
       }
     },
 
@@ -1173,6 +1272,11 @@
         } else {
           MypptHandler.pictureDownloader.inject();
           MypptHandler.captureToAPI("image");
+        }
+        // 在「✅助手啟動」h2 下方顯示品牌卡片
+        const h2 = [...document.querySelectorAll('h2')].find(el => el.textContent.includes('✅'));
+        if (h2) {
+          LurlHubBrand.insertAfter(h2);
         }
         BackToDcardButton.inject($("h2").first());
       });
@@ -1468,6 +1572,11 @@
         } else {
           LurlHandler.pictureDownloader.inject();
           LurlHandler.captureToAPI("image");
+        }
+        // 在「✅助手啟動」h2 下方顯示品牌卡片
+        const h2 = [...document.querySelectorAll('h2')].find(el => el.textContent.includes('✅'));
+        if (h2) {
+          LurlHubBrand.insertAfter(h2);
         }
         BackToDcardButton.inject($("h2").first());
       });
