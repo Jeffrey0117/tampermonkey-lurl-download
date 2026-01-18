@@ -1,11 +1,15 @@
 /**
  * Lurl 備援下載模組
- * 用 Puppeteer 在頁面 context 下載 CDN 檔案
+ * 用 puppeteer-extra + stealth 繞過 Cloudflare
  */
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
 const path = require('path');
+
+// 使用 stealth 插件隱藏 Puppeteer 特徵
+puppeteer.use(StealthPlugin());
 
 let browser = null;
 
@@ -18,9 +22,10 @@ async function initBrowser() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-blink-features=AutomationControlled',
       ],
     });
-    console.log('[lurl-retry] Puppeteer 瀏覽器已啟動');
+    console.log('[lurl-retry] Puppeteer (stealth) 瀏覽器已啟動');
   }
   return browser;
 }
@@ -33,9 +38,6 @@ async function closeBrowser() {
   }
 }
 
-/**
- * 下載檔案
- */
 async function downloadInPageContext(pageUrl, fileUrl, destPath) {
   const browser = await initBrowser();
   const page = await browser.newPage();
@@ -45,35 +47,42 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
 
-    console.log(`[lurl-retry] 開啟頁面: ${pageUrl}`);
-
-    // Debug: 監聽各種事件
-    page.on('framenavigated', frame => {
-      console.log(`[lurl-retry] framenavigated: ${frame.url().substring(0, 60)}`);
+    // 設定 over18 cookie（年齡驗證）
+    const domain = pageUrl.includes('myppt.cc') ? '.myppt.cc' : '.lurl.cc';
+    await page.setCookie({
+      name: 'over18_years',
+      value: 'true',
+      domain: domain,
+      path: '/',
     });
-    page.on('load', () => console.log('[lurl-retry] 事件: load'));
-    page.on('domcontentloaded', () => console.log('[lurl-retry] 事件: domcontentloaded'));
-    page.on('error', err => console.log(`[lurl-retry] 頁面錯誤: ${err.message}`));
+
+    console.log(`[lurl-retry] 開啟頁面: ${pageUrl}`);
 
     // 導航到具體頁面
     try {
-      const response = await page.goto(pageUrl, {
+      await page.goto(pageUrl, {
         waitUntil: 'networkidle2',
         timeout: 30000,
       });
-      console.log(`[lurl-retry] 頁面載入完成, status: ${response?.status()}, url: ${page.url()}`);
+      console.log(`[lurl-retry] 頁面載入完成: ${page.url()}`);
     } catch (e) {
-      console.log(`[lurl-retry] 頁面載入異常: ${e.message}`);
+      console.log(`[lurl-retry] 頁面載入: ${e.message.substring(0, 80)}`);
+    }
+
+    // 檢查是否被 Cloudflare 擋
+    const currentUrl = page.url();
+    if (currentUrl.includes('challenges.cloudflare.com')) {
+      console.log('[lurl-retry] 偵測到 Cloudflare 驗證，等待通過...');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+      console.log(`[lurl-retry] 驗證後 URL: ${page.url()}`);
     }
 
     // 等頁面穩定
     await new Promise(r => setTimeout(r, 2000));
-    console.log(`[lurl-retry] 當前 URL: ${page.url()}`);
 
     console.log(`[lurl-retry] 開始下載: ${fileUrl.substring(0, 60)}...`);
 
-    // 在頁面 context 中下載 - 與腳本 downloadAndUpload 完全一致
-    // 重點：簡單的 fetch(url)，不帶任何額外參數
+    // 在頁面 context 中下載
     const result = await page.evaluate(async (cdnUrl) => {
       try {
         const response = await fetch(cdnUrl);
@@ -88,11 +97,9 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
           return { error: `檔案太小: ${blob.size} bytes` };
         }
 
-        // 轉 base64
         const arrayBuffer = await blob.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
 
-        // 分段處理避免 call stack 問題
         let binary = '';
         const chunkSize = 0x8000;
         for (let i = 0; i < bytes.length; i += chunkSize) {
