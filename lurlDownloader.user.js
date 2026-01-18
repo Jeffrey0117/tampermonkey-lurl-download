@@ -603,7 +603,6 @@
         .lurlhub-success-h1 {
           text-align: center;
           color: #10b981;
-          font-size: 22px;
           margin: 20px 0 10px 0;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
@@ -635,6 +634,73 @@
       h1.className = 'lurlhub-success-h1';
       h1.textContent = text;
       return h1;
+    },
+
+    // 建立好評引導提示
+    createRatingPrompt: () => {
+      const prompt = document.createElement('div');
+      prompt.className = 'lurlhub-rating-prompt';
+      prompt.innerHTML = `
+        <div class="lurlhub-rating-text">
+          🎉 救援成功！覺得好用嗎？
+        </div>
+        <a href="https://greasyfork.org/zh-TW/scripts/476803/feedback" target="_blank" class="lurlhub-rating-btn">
+          ⭐ 給個好評支持我們
+        </a>
+        <button class="lurlhub-rating-close" onclick="this.parentElement.remove()">✕</button>
+      `;
+      // 注入樣式
+      if (!document.getElementById('lurlhub-rating-styles')) {
+        const style = document.createElement('style');
+        style.id = 'lurlhub-rating-styles';
+        style.textContent = `
+          .lurlhub-rating-prompt {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border: 1px solid #f59e0b;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin: 16px auto;
+            max-width: 500px;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+          }
+          .lurlhub-rating-text {
+            flex: 1;
+            font-size: 14px;
+            color: #92400e;
+            font-weight: 500;
+          }
+          .lurlhub-rating-btn {
+            background: #f59e0b;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background 0.2s;
+          }
+          .lurlhub-rating-btn:hover {
+            background: #d97706;
+          }
+          .lurlhub-rating-close {
+            background: none;
+            border: none;
+            color: #92400e;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            opacity: 0.6;
+          }
+          .lurlhub-rating-close:hover {
+            opacity: 1;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      return prompt;
     },
 
     // 在元素後面插入品牌卡片
@@ -748,7 +814,7 @@
           <img src="${API_BASE}/files/LOGO.png" class="lurlhub-btn-logo" onerror="this.style.display='none'">
           <div class="lurlhub-btn-text">
             <div class="lurlhub-btn-brand">LurlHub</div>
-            <div class="lurlhub-btn-tagline">連結失效？我們有備份 →</div>
+            <div class="lurlhub-btn-tagline">✨ 一鍵救援過期影片 [免費恢復]</div>
           </div>
         </div>
       `;
@@ -1005,11 +1071,13 @@
           lottie.replaceWith(newElement);
         }
 
-        // 3. 在圖片/影片下面加上成功標題 + 品牌卡片
+        // 3. 在圖片/影片下面加上成功標題 + 品牌卡片 + 好評引導
         const successH1 = LurlHubBrand.createSuccessH1('✅ 拯救過期資源成功');
         const brandCard = LurlHubBrand.createCard('受不了過期連結？我們搞定 →');
+        const ratingPrompt = LurlHubBrand.createRatingPrompt();
         newElement.insertAdjacentElement('afterend', successH1);
         successH1.insertAdjacentElement('afterend', brandCard);
+        brandCard.insertAdjacentElement('afterend', ratingPrompt);
       }
     },
 
