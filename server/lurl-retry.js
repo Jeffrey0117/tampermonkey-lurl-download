@@ -47,33 +47,28 @@ async function downloadInPageContext(pageUrl, fileUrl, destPath) {
 
     console.log(`[lurl-retry] 開啟頁面: ${pageUrl}`);
 
-    // 啟用請求攔截，阻止頁面跳轉
-    await page.setRequestInterception(true);
-
-    let initialNavigation = true;
-    page.on('request', request => {
-      // 允許第一次導航和資源請求，阻止後續的 document 導航（跳轉）
-      if (request.isNavigationRequest() && !initialNavigation) {
-        console.log(`[lurl-retry] 阻止跳轉: ${request.url().substring(0, 50)}`);
-        request.abort();
-      } else {
-        if (request.isNavigationRequest()) {
-          initialNavigation = false;
-        }
-        request.continue();
-      }
+    // Debug: 監聽各種事件
+    page.on('framenavigated', frame => {
+      console.log(`[lurl-retry] framenavigated: ${frame.url().substring(0, 60)}`);
     });
+    page.on('load', () => console.log('[lurl-retry] 事件: load'));
+    page.on('domcontentloaded', () => console.log('[lurl-retry] 事件: domcontentloaded'));
+    page.on('error', err => console.log(`[lurl-retry] 頁面錯誤: ${err.message}`));
 
     // 導航到具體頁面
-    await page.goto(pageUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 15000,
-    }).catch(e => {
-      console.log(`[lurl-retry] 頁面載入: ${e.message.substring(0, 50)}`);
-    });
+    try {
+      const response = await page.goto(pageUrl, {
+        waitUntil: 'networkidle2',
+        timeout: 30000,
+      });
+      console.log(`[lurl-retry] 頁面載入完成, status: ${response?.status()}, url: ${page.url()}`);
+    } catch (e) {
+      console.log(`[lurl-retry] 頁面載入異常: ${e.message}`);
+    }
 
     // 等頁面穩定
     await new Promise(r => setTimeout(r, 2000));
+    console.log(`[lurl-retry] 當前 URL: ${page.url()}`);
 
     console.log(`[lurl-retry] 開始下載: ${fileUrl.substring(0, 60)}...`);
 
