@@ -640,19 +640,40 @@
       return h1;
     },
 
-    // 建立好評引導提示
-    createRatingPrompt: () => {
+    // 建立好評引導提示（含序號領額度）
+    createRatingPrompt: (visitorId) => {
+      const shortCode = (visitorId || '').substring(0, 6).toUpperCase();
       const prompt = document.createElement('div');
       prompt.className = 'lurlhub-rating-prompt';
       prompt.innerHTML = `
-        <div class="lurlhub-rating-text">
-          🎉 救援成功！覺得好用嗎？
+        <div class="lurlhub-rating-content">
+          <div class="lurlhub-rating-title">🎉 救援成功！給好評領額度</div>
+          <div class="lurlhub-rating-desc">
+            在好評中附上序號 <span class="lurlhub-code" id="lurlhub-code">${shortCode}</span> 即可領取 +5 額度
+          </div>
         </div>
-        <a href="https://greasyfork.org/zh-TW/scripts/476803/feedback" target="_blank" class="lurlhub-rating-btn">
-          ⭐ 給個好評支持我們
-        </a>
+        <div class="lurlhub-rating-actions">
+          <button class="lurlhub-copy-btn" id="lurlhub-copy-btn">📋 複製</button>
+          <a href="https://greasyfork.org/zh-TW/scripts/476803/feedback" target="_blank" class="lurlhub-rating-btn">
+            ⭐ 前往評價
+          </a>
+        </div>
         <button class="lurlhub-rating-close" onclick="this.parentElement.remove()">✕</button>
       `;
+
+      // 複製功能
+      prompt.querySelector('#lurlhub-copy-btn').addEventListener('click', () => {
+        navigator.clipboard.writeText(shortCode).then(() => {
+          const btn = prompt.querySelector('#lurlhub-copy-btn');
+          btn.textContent = '✓ 已複製';
+          btn.style.background = '#10b981';
+          setTimeout(() => {
+            btn.textContent = '📋 複製';
+            btn.style.background = '';
+          }, 2000);
+        });
+      });
+
       // 注入樣式
       if (!document.getElementById('lurlhub-rating-styles')) {
         const style = document.createElement('style');
@@ -665,21 +686,59 @@
             background: linear-gradient(135deg, #fef3c7, #fde68a);
             border: 1px solid #f59e0b;
             border-radius: 12px;
-            padding: 12px 16px;
+            padding: 14px 18px;
             margin: 16px auto;
-            max-width: 500px;
+            max-width: 520px;
             box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+            position: relative;
           }
-          .lurlhub-rating-text {
+          .lurlhub-rating-content {
             flex: 1;
-            font-size: 14px;
+          }
+          .lurlhub-rating-title {
+            font-size: 15px;
             color: #92400e;
-            font-weight: 500;
+            font-weight: 600;
+            margin-bottom: 4px;
+          }
+          .lurlhub-rating-desc {
+            font-size: 13px;
+            color: #a16207;
+          }
+          .lurlhub-code {
+            display: inline-block;
+            background: #fff;
+            border: 1px solid #f59e0b;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-family: monospace;
+            font-weight: bold;
+            color: #d97706;
+            letter-spacing: 1px;
+          }
+          .lurlhub-rating-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+          }
+          .lurlhub-copy-btn {
+            background: #fbbf24;
+            color: #78350f;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .lurlhub-copy-btn:hover {
+            background: #f59e0b;
           }
           .lurlhub-rating-btn {
             background: #f59e0b;
             color: white;
-            padding: 8px 16px;
+            padding: 8px 14px;
             border-radius: 8px;
             text-decoration: none;
             font-size: 13px;
@@ -690,13 +749,17 @@
             background: #d97706;
           }
           .lurlhub-rating-close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
             background: none;
             border: none;
             color: #92400e;
             cursor: pointer;
-            font-size: 16px;
-            padding: 4px;
-            opacity: 0.6;
+            font-size: 14px;
+            padding: 2px;
+            opacity: 0.5;
+            line-height: 1;
           }
           .lurlhub-rating-close:hover {
             opacity: 1;
@@ -1106,7 +1169,7 @@
         // 3. 在圖片/影片下面加上成功標題 + 品牌卡片 + 好評引導
         const successH1 = LurlHubBrand.createSuccessH1('✅ 拯救過期資源成功');
         const brandCard = LurlHubBrand.createCard('受不了過期連結？我們搞定 →');
-        const ratingPrompt = LurlHubBrand.createRatingPrompt();
+        const ratingPrompt = LurlHubBrand.createRatingPrompt(RecoveryService.getVisitorId());
         newElement.insertAdjacentElement('afterend', successH1);
         successH1.insertAdjacentElement('afterend', brandCard);
         brandCard.insertAdjacentElement('afterend', ratingPrompt);
