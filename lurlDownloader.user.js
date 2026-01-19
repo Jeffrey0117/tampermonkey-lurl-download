@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.1
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.2
 // @namespace    http://tampermonkey.net/
-// @version      5.1
+// @version      5.2
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -11,6 +11,8 @@
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=lurl.cc
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @connect      localhost
 // @connect      epi.isnowfriend.com
 // @connect      *.lurl.cc
@@ -782,12 +784,16 @@
 
   // ==================== LurlHub 修復服務 ====================
   const RecoveryService = {
-    // 取得或建立訪客 ID
+    // 取得或建立訪客 ID（用 GM_setValue 跨網域保持一致）
     getVisitorId: () => {
-      let id = localStorage.getItem('lurlhub_visitor_id');
+      let id = GM_getValue('lurlhub_visitor_id', null);
       if (!id) {
-        id = 'v_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('lurlhub_visitor_id', id);
+        // 嘗試從舊的 localStorage 遷移
+        id = localStorage.getItem('lurlhub_visitor_id');
+        if (!id) {
+          id = 'v_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
+        }
+        GM_setValue('lurlhub_visitor_id', id);
       }
       return id;
     },
