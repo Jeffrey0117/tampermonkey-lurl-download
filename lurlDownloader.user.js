@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.4
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.5
 // @namespace    http://tampermonkey.net/
-// @version      5.3.4
+// @version      5.3.5
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -994,6 +994,8 @@
       }
       // 清空 movie_introdu
       $('.movie_introdu').html('');
+      // 移除頁面上其他的 video（避免重複）
+      $('video').remove();
     },
 
     // 密碼錯誤時插入「使用備份」按鈕
