@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.5
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.6
 // @namespace    http://tampermonkey.net/
-// @version      5.3.5
+// @version      5.3.6
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -992,10 +992,10 @@
         $errorH2.html('✅ LurlHub 已載入備份');
         $errorH2.closest('h2').css('color', '#22c55e');
       }
-      // 清空 movie_introdu
-      $('.movie_introdu').html('');
-      // 移除頁面上其他的 video（避免重複）
-      $('video').remove();
+      // 移除所有 .movie_introdu 裡的內容（可能有多個）
+      $('.movie_introdu').find('video, img').remove();
+      // 只保留第一個 .movie_introdu，隱藏其他的
+      $('.movie_introdu').not(':first').hide();
     },
 
     // 密碼錯誤時插入「使用備份」按鈕
@@ -1409,11 +1409,13 @@
       }
       // 情況2: 密碼錯誤頁面（有 movie_introdu）
       else {
-        const $movieSection = $('.movie_introdu');
-        if ($movieSection.length) {
-          $movieSection.html('').append(newElement);
+        // 移除所有 .movie_introdu 裡的 video/img（可能有多個）
+        $('.movie_introdu').find('video, img').remove();
+        // 只在第一個插入
+        const $firstSection = $('.movie_introdu').first();
+        if ($firstSection.length) {
+          $firstSection.prepend(newElement);
         } else {
-          // fallback: 插入到 body
           document.body.appendChild(newElement);
         }
       }
