@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.1
 // @namespace    http://tampermonkey.net/
-// @version      5.3
+// @version      5.3.1
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -26,6 +26,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/20 v5.3.1 - 重構流程：查備份優先，密碼錯誤時提供備份選項
   2026/01/20 v5.3 - 測速支援強制重測（Console: _lurlhub.runSpeedTest(true)）
   2026/01/20 v5.2 - 新增網速實測功能，背景上報真實頻寬
   2026/01/18 v5.1 - 重構品牌卡片組件，正常解鎖也顯示 LurlHub 品牌
@@ -800,40 +801,94 @@
       return id;
     },
 
-    // 檢測頁面是否過期（h1 包含「該連結已過期」）
-    isPageExpired: () => {
+    // 檢測頁面狀態
+    // 返回: 'expired' | 'needsPassword' | 'passwordFailed' | 'normal'
+    getPageStatus: () => {
       const h1 = document.querySelector('h1');
-      return h1 && h1.textContent.includes('該連結已過期');
+      if (h1 && h1.textContent.includes('該連結已過期')) {
+        return 'expired';
+      }
+      // 檢查密碼狀態
+      const $statusSpan = $('#back_top .container.NEWii_con section:nth-child(6) h2 span');
+      const statusText = $statusSpan.text();
+
+      if (statusText.includes('錯誤')) {
+        return 'passwordFailed'; // 密碼錯誤
+      }
+      if (statusText.includes('成功')) {
+        return 'normal'; // 密碼正確，正常頁面
+      }
+      // 有 .login_span 但還沒嘗試密碼
+      if ($('.login_span').length > 0) {
+        return 'needsPassword';
+      }
+      return 'normal';
     },
 
-    // 主動檢查過期並插入 LurlHub 按鈕
+    // 檢測頁面是否過期（向下相容）
+    isPageExpired: () => {
+      return RecoveryService.getPageStatus() === 'expired';
+    },
+
+    // 主入口：查備份 → 決定策略
     checkAndRecover: async () => {
-      if (!RecoveryService.isPageExpired()) return false;
-
-      console.log('[LurlHub] 偵測到頁面已過期，檢查備份...');
       const pageUrl = window.location.href.split('?')[0];
-      const backup = await RecoveryService.checkBackup(pageUrl);
+      const pageStatus = RecoveryService.getPageStatus();
 
-      if (!backup.hasBackup) {
-        console.log('[LurlHub] 無備份可用');
-        return true;
-      }
+      console.log(`[LurlHub] 頁面狀態: ${pageStatus}`);
+
+      // 先查備份
+      const backup = await RecoveryService.checkBackup(pageUrl);
+      const hasBackup = backup.hasBackup;
+
+      console.log(`[LurlHub] 有備份: ${hasBackup}`);
 
       // 背景回報設備資訊（不阻塞）
       RecoveryService.reportDevice();
 
-      // 已修復過 → 直接顯示，不彈窗、不扣點
-      if (backup.alreadyRecovered) {
-        console.log('[LurlHub] 已修復過，直接顯示備份');
-        RecoveryService.replaceResource(backup.backupUrl, backup.record.type);
-        Utils.showToast('✅ 已自動載入備份', 'success');
-        return true;
+      // ===== 有備份的情況 =====
+      if (hasBackup) {
+        // 已修復過 → 直接顯示，不扣點
+        if (backup.alreadyRecovered) {
+          console.log('[LurlHub] 已修復過，直接顯示備份');
+          RecoveryService.replaceResource(backup.backupUrl, backup.record.type);
+          Utils.showToast('✅ 已自動載入備份', 'success');
+          return { handled: true, hasBackup: true };
+        }
+
+        // 過期頁面 → 顯示修復按鈕
+        if (pageStatus === 'expired') {
+          console.log('[LurlHub] 過期頁面，插入修復按鈕');
+          RecoveryService.insertRecoveryButton(backup, pageUrl);
+          return { handled: true, hasBackup: true };
+        }
+
+        // 需要密碼 → 返回讓外層先嘗試破解
+        if (pageStatus === 'needsPassword') {
+          console.log('[LurlHub] 需要密碼，先嘗試破解');
+          return { handled: false, hasBackup: true, backup, pageStatus };
+        }
+
+        // 密碼錯誤 → 顯示「使用備份」按鈕
+        if (pageStatus === 'passwordFailed') {
+          console.log('[LurlHub] 密碼錯誤，提供備份選項');
+          RecoveryService.insertBackupButton(backup, pageUrl);
+          return { handled: true, hasBackup: true };
+        }
+
+        // 正常頁面 → 備份作為 fallback
+        console.log('[LurlHub] 正常頁面，備份待命');
+        return { handled: false, hasBackup: true, backup };
       }
 
-      // 未修復過 → 在 h1 底下插入 LurlHub 按鈕
-      console.log('[LurlHub] 有備份可用，插入修復按鈕');
-      RecoveryService.insertRecoveryButton(backup, pageUrl);
-      return true;
+      // ===== 無備份的情況 =====
+      if (pageStatus === 'expired') {
+        console.log('[LurlHub] 過期且無備份，無能為力');
+        return { handled: true, hasBackup: false };
+      }
+
+      // 需要密碼或正常 → 讓外層處理
+      return { handled: false, hasBackup: false };
     },
 
     // 在過期 h1 底下插入 LurlHub 按鈕
@@ -919,6 +974,89 @@
             }
           }
         });
+      };
+    },
+
+    // 密碼錯誤時插入「使用備份」按鈕
+    insertBackupButton: (backup, pageUrl) => {
+      // 找到密碼錯誤的提示區域
+      const $statusSpan = $('#back_top .container.NEWii_con section:nth-child(6) h2 span');
+      const $section = $statusSpan.closest('section');
+      if (!$section.length) return;
+
+      // 移除舊的按鈕
+      const oldBtn = document.getElementById('lurlhub-backup-btn');
+      if (oldBtn) oldBtn.remove();
+
+      const btnContainer = document.createElement('div');
+      btnContainer.id = 'lurlhub-backup-btn';
+      btnContainer.innerHTML = `
+        <style>
+          #lurlhub-backup-btn {
+            text-align: center;
+            margin: 20px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          }
+          .lurlhub-backup-title {
+            color: #f59e0b;
+            font-size: 16px;
+            margin-bottom: 10px;
+          }
+          .lurlhub-backup-desc {
+            color: #ccc;
+            font-size: 13px;
+            margin-bottom: 15px;
+          }
+          .lurlhub-backup-trigger {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          .lurlhub-backup-trigger:hover {
+            transform: scale(1.05);
+          }
+          .lurlhub-backup-quota {
+            color: #888;
+            font-size: 12px;
+            margin-top: 10px;
+          }
+        </style>
+        <div class="lurlhub-backup-title">😕 密碼錯誤？沒關係！</div>
+        <div class="lurlhub-backup-desc">LurlHub 有這個內容的備份，消耗 1 額度即可觀看</div>
+        <button class="lurlhub-backup-trigger" id="lurlhub-backup-trigger">
+          <img src="${API_BASE}/files/LOGO.png" style="width:24px;height:24px;border-radius:4px;" onerror="this.style.display='none'">
+          使用備份觀看
+        </button>
+        <div class="lurlhub-backup-quota">剩餘額度: ${backup.quota.remaining} / ${backup.quota.total}</div>
+      `;
+
+      $section[0].insertAdjacentElement('afterend', btnContainer);
+
+      // 點擊按鈕
+      document.getElementById('lurlhub-backup-trigger').onclick = async () => {
+        try {
+          const result = await RecoveryService.recover(pageUrl);
+          RecoveryService.replaceResource(result.backupUrl, result.record.type);
+          btnContainer.remove();
+          Utils.showToast(`✅ 觀看成功！剩餘額度: ${result.quota.remaining}`, 'success');
+        } catch (err) {
+          if (err.error === 'quota_exhausted') {
+            Utils.showToast('❌ 額度已用完', 'error');
+          } else {
+            Utils.showToast('❌ 載入失敗', 'error');
+          }
+        }
       };
     },
 
@@ -1245,20 +1383,22 @@
       }
     },
 
-    // 監聽影片載入失敗
-    watchVideoError: () => {
+    // 監聽影片載入失敗（可傳入已知的 backup 避免重複查詢）
+    watchVideoError: (existingBackup = null) => {
       const video = document.querySelector('video');
       if (!video) return;
 
       let errorHandled = false;
+      const pageUrl = window.location.href.split('?')[0];
 
       const handleError = async () => {
         if (errorHandled) return;
         errorHandled = true;
 
         console.log('[LurlHub] 偵測到影片載入失敗，檢查備份...');
-        const pageUrl = window.location.href.split('?')[0];
-        const backup = await RecoveryService.checkBackup(pageUrl);
+
+        // 使用已知備份或重新查詢
+        const backup = existingBackup || await RecoveryService.checkBackup(pageUrl);
 
         if (backup.hasBackup) {
           // 已修復過 → 直接顯示
@@ -1494,16 +1634,23 @@
         MypptHandler.autoFillPassword();
       });
       $(window).on("load", async () => {
-        // 先檢查頁面是否過期
-        if (await RecoveryService.checkAndRecover()) {
-          return; // 過期頁面已處理，不執行正常流程
+        // 查備份 + 決定策略
+        const result = await RecoveryService.checkAndRecover();
+
+        // 如果已處理（過期/密碼錯誤等），停止
+        if (result.handled) {
+          return;
         }
 
+        // 正常頁面，繼續執行
         const contentType = MypptHandler.detectContentType();
         if (contentType === "video") {
           MypptHandler.videoDownloader.inject();
           MypptHandler.captureToAPI("video");
-          RecoveryService.watchVideoError();
+          // 如果有備份，監聯影片錯誤時 fallback
+          if (result.hasBackup) {
+            RecoveryService.watchVideoError(result.backup);
+          }
         } else {
           MypptHandler.pictureDownloader.inject();
           MypptHandler.captureToAPI("image");
@@ -1791,19 +1938,28 @@
     },
 
     init: () => {
+      // 先嘗試密碼破解（會在 needsPassword 狀態時設 cookie 並 reload）
       LurlHandler.passwordCracker.init();
+
       $(window).on("load", async () => {
-        // 先檢查頁面是否過期
-        if (await RecoveryService.checkAndRecover()) {
-          return; // 過期頁面已處理，不執行正常流程
+        // 查備份 + 決定策略
+        const result = await RecoveryService.checkAndRecover();
+
+        // 如果已處理（過期/密碼錯誤等），停止
+        if (result.handled) {
+          return;
         }
 
+        // 正常頁面，繼續執行
         const contentType = LurlHandler.detectContentType();
         if (contentType === "video") {
           LurlHandler.videoDownloader.inject();
           LurlHandler.videoDownloader.replacePlayer();
           LurlHandler.captureToAPI("video");
-          RecoveryService.watchVideoError();
+          // 如果有備份，監聽影片錯誤時 fallback
+          if (result.hasBackup) {
+            RecoveryService.watchVideoError(result.backup);
+          }
         } else {
           LurlHandler.pictureDownloader.inject();
           LurlHandler.captureToAPI("image");
