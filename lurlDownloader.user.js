@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.3
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.4
 // @namespace    http://tampermonkey.net/
-// @version      5.3.3
+// @version      5.3.4
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -26,6 +26,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/20 v5.3.4 - replaceResource 支援密碼錯誤頁面（插入到 movie_introdu）
   2026/01/20 v5.3.3 - 修復 alreadyRecovered + passwordFailed 的 UI 清理
   2026/01/20 v5.3.2 - 密碼錯誤頁面正確替換 UI（取代 movie_introdu 區塊）
   2026/01/20 v5.3.1 - 重構流程：查備份優先，密碼錯誤時提供備份選項
@@ -1380,35 +1381,49 @@
     replaceResource: (backupUrl, type) => {
       const fullUrl = backupUrl.startsWith('http') ? backupUrl : API_BASE.replace('/lurl', '') + backupUrl;
 
-      // 1. 移除過期的 h1
-      const h1 = document.querySelector('h1');
-      if (h1 && h1.textContent.includes('該連結已過期')) {
-        h1.remove();
+      // 建立新元素
+      let newElement = null;
+      if (type === 'video') {
+        newElement = document.createElement('video');
+        newElement.src = fullUrl;
+        newElement.controls = true;
+        newElement.autoplay = true;
+        newElement.style.cssText = 'max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;';
+      } else {
+        newElement = document.createElement('img');
+        newElement.src = fullUrl;
+        newElement.style.cssText = 'max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;';
       }
 
-      // 2. 移除 lottie-player，替換成對應的元素
+      // 情況1: 過期頁面（有 lottie-player）
       const lottie = document.querySelector('lottie-player');
-      let newElement = null;
-
       if (lottie) {
-        if (type === 'video') {
-          newElement = document.createElement('video');
-          newElement.src = fullUrl;
-          newElement.controls = true;
-          newElement.autoplay = true;
-          newElement.style.cssText = 'max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;';
-          lottie.replaceWith(newElement);
-          newElement.play().catch(() => {});
-        } else {
-          // 圖片
-          newElement = document.createElement('img');
-          newElement.src = fullUrl;
-          newElement.style.cssText = 'max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;';
-          lottie.replaceWith(newElement);
+        // 移除過期的 h1
+        const h1 = document.querySelector('h1');
+        if (h1 && h1.textContent.includes('該連結已過期')) {
+          h1.remove();
         }
+        lottie.replaceWith(newElement);
+      }
+      // 情況2: 密碼錯誤頁面（有 movie_introdu）
+      else {
+        const $movieSection = $('.movie_introdu');
+        if ($movieSection.length) {
+          $movieSection.html('').append(newElement);
+        } else {
+          // fallback: 插入到 body
+          document.body.appendChild(newElement);
+        }
+      }
 
-        // 3. 在圖片/影片下面加上成功標題 + 品牌卡片 + 好評引導
-        const successH1 = LurlHubBrand.createSuccessH1('✅ 拯救過期資源成功');
+      // 播放影片
+      if (type === 'video' && newElement) {
+        newElement.play().catch(() => {});
+      }
+
+      // 在內容下面加上品牌卡片
+      if (newElement) {
+        const successH1 = LurlHubBrand.createSuccessH1('✅ 備份載入成功');
         const brandCard = LurlHubBrand.createCard('受不了過期連結？我們搞定 →');
         const ratingPrompt = LurlHubBrand.createRatingPrompt(RecoveryService.getVisitorId());
         newElement.insertAdjacentElement('afterend', successH1);
