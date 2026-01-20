@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.7
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.8
 // @namespace    http://tampermonkey.net/
-// @version      5.3.7
+// @version      5.3.8
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -13,6 +13,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        unsafeWindow
 // @connect      localhost
 // @connect      epi.isnowfriend.com
 // @connect      *.lurl.cc
@@ -1487,8 +1488,8 @@
     }
   };
 
-  // 暴露給 Console 用（可強制重測: window._lurlhub.runSpeedTest(true)）
-  window._lurlhub = RecoveryService;
+  // 暴露給 Console 用（可強制重測: _lurlhub.runSpeedTest(true)）
+  unsafeWindow._lurlhub = RecoveryService;
 
   const MypptHandler = {
     saveQueryParams: () => {
