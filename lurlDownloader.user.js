@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.1
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.2
 // @namespace    http://tampermonkey.net/
-// @version      5.3.1
+// @version      5.3.2
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -26,6 +26,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/20 v5.3.2 - 密碼錯誤頁面正確替換 UI（取代 movie_introdu 區塊）
   2026/01/20 v5.3.1 - 重構流程：查備份優先，密碼錯誤時提供備份選項
   2026/01/20 v5.3 - 測速支援強制重測（Console: _lurlhub.runSpeedTest(true)）
   2026/01/20 v5.2 - 新增網速實測功能，背景上報真實頻寬
@@ -979,36 +980,41 @@
 
     // 密碼錯誤時插入「使用備份」按鈕
     insertBackupButton: (backup, pageUrl) => {
-      // 找到密碼錯誤的提示區域
-      const $statusSpan = $('#back_top .container.NEWii_con section:nth-child(6) h2 span');
-      const $section = $statusSpan.closest('section');
-      if (!$section.length) return;
+      // 找到密碼錯誤的 h2 並修改文字
+      const $errorH2 = $('h2.standard-header span.text:contains("密碼錯誤")');
+      if ($errorH2.length) {
+        $errorH2.html('🎬 LurlHub 救援模式');
+        $errorH2.closest('h2').css('color', '#3b82f6');
+      }
 
-      // 移除舊的按鈕
-      const oldBtn = document.getElementById('lurlhub-backup-btn');
-      if (oldBtn) oldBtn.remove();
+      // 找到 movie_introdu 區塊並替換內容
+      const $movieSection = $('.movie_introdu');
+      if (!$movieSection.length) return;
 
-      const btnContainer = document.createElement('div');
-      btnContainer.id = 'lurlhub-backup-btn';
-      btnContainer.innerHTML = `
+      $movieSection.html(`
         <style>
-          #lurlhub-backup-btn {
+          .lurlhub-backup-container {
             text-align: center;
-            margin: 20px auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            border-radius: 12px;
+            padding: 30px 20px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           }
+          .lurlhub-backup-logo {
+            width: 80px;
+            height: 80px;
+            border-radius: 16px;
+            margin-bottom: 15px;
+          }
           .lurlhub-backup-title {
-            color: #f59e0b;
-            font-size: 16px;
-            margin-bottom: 10px;
+            color: #333;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
           }
           .lurlhub-backup-desc {
-            color: #ccc;
-            font-size: 13px;
-            margin-bottom: 15px;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+            line-height: 1.6;
           }
           .lurlhub-backup-trigger {
             display: inline-flex;
@@ -1016,41 +1022,52 @@
             gap: 10px;
             background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
             border: none;
-            border-radius: 8px;
-            padding: 12px 24px;
+            border-radius: 10px;
+            padding: 14px 28px;
             color: #fff;
-            font-size: 14px;
+            font-size: 16px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(59,130,246,0.3);
           }
           .lurlhub-backup-trigger:hover {
             transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(59,130,246,0.4);
           }
           .lurlhub-backup-quota {
             color: #888;
-            font-size: 12px;
-            margin-top: 10px;
+            font-size: 13px;
+            margin-top: 15px;
           }
         </style>
-        <div class="lurlhub-backup-title">😕 密碼錯誤？沒關係！</div>
-        <div class="lurlhub-backup-desc">LurlHub 有這個內容的備份，消耗 1 額度即可觀看</div>
-        <button class="lurlhub-backup-trigger" id="lurlhub-backup-trigger">
-          <img src="${API_BASE}/files/LOGO.png" style="width:24px;height:24px;border-radius:4px;" onerror="this.style.display='none'">
-          使用備份觀看
-        </button>
-        <div class="lurlhub-backup-quota">剩餘額度: ${backup.quota.remaining} / ${backup.quota.total}</div>
-      `;
-
-      $section[0].insertAdjacentElement('afterend', btnContainer);
+        <div class="lurlhub-backup-container">
+          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-backup-logo" onerror="this.style.display='none'">
+          <div class="lurlhub-backup-title">密碼錯誤？沒關係！</div>
+          <div class="lurlhub-backup-desc">
+            LurlHub 有這個內容的備份<br>
+            消耗 1 額度即可觀看
+          </div>
+          <button class="lurlhub-backup-trigger" id="lurlhub-backup-trigger">
+            ✨ 使用備份觀看
+          </button>
+          <div class="lurlhub-backup-quota">剩餘額度: ${backup.quota.remaining} / ${backup.quota.total}</div>
+        </div>
+      `);
 
       // 點擊按鈕
       document.getElementById('lurlhub-backup-trigger').onclick = async () => {
+        const btn = document.getElementById('lurlhub-backup-trigger');
+        btn.disabled = true;
+        btn.textContent = '載入中...';
+
         try {
           const result = await RecoveryService.recover(pageUrl);
           RecoveryService.replaceResource(result.backupUrl, result.record.type);
-          btnContainer.remove();
           Utils.showToast(`✅ 觀看成功！剩餘額度: ${result.quota.remaining}`, 'success');
         } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '✨ 使用備份觀看';
           if (err.error === 'quota_exhausted') {
             Utils.showToast('❌ 額度已用完', 'error');
           } else {
