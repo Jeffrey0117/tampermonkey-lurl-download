@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.2
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3
 // @namespace    http://tampermonkey.net/
-// @version      5.2
+// @version      5.3
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -26,6 +26,8 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/20 v5.3 - 測速支援強制重測（Console: _lurlhub.runSpeedTest(true)）
+  2026/01/20 v5.2 - 新增網速實測功能，背景上報真實頻寬
   2026/01/18 v5.1 - 重構品牌卡片組件，正常解鎖也顯示 LurlHub 品牌
   2026/01/18 v5.0 - 修復成功頁面新增 LurlHub 品牌卡片
   2026/01/18 v4.8 - 新增版本檢查機制，可收到更新通知
@@ -987,7 +989,68 @@
           payload.bc = battery.charging;
         }
 
+        // 先上報基本資訊
         await RecoveryService.rpc('rd', payload);
+
+        // 背景執行測速（不阻塞）
+        RecoveryService.runSpeedTest();
+      } catch (e) {
+        // 靜默失敗
+      }
+    },
+
+    // 執行測速並上報（force=true 可強制重測）
+    runSpeedTest: async (force = false) => {
+      try {
+        // 檢查是否已經測過（每小時最多一次）
+        if (!force) {
+          const lastTest = GM_getValue('lurlhub_last_speedtest', 0);
+          if (Date.now() - lastTest < 3600000) return; // 1 小時內不重測
+        }
+
+        // 取得測速節點
+        const res = await fetch('https://epi.isnowfriend.com/mst/targets');
+        const data = await res.json();
+        if (!data.success || !data.targets?.length) return;
+
+        const targets = data.targets.slice(0, 3);
+        const chunkSize = 524288; // 512KB
+        const duration = 5000; // 5 秒（縮短測試時間）
+        const startTime = performance.now();
+        const deadline = startTime + duration;
+        let totalBytes = 0;
+
+        // 平行下載測速
+        const downloadLoop = async (url) => {
+          while (performance.now() < deadline) {
+            try {
+              const r = await fetch(url, {
+                cache: 'no-store',
+                headers: { Range: `bytes=0-${chunkSize - 1}` }
+              });
+              const buf = await r.arrayBuffer();
+              totalBytes += buf.byteLength;
+            } catch (e) {
+              break;
+            }
+          }
+        };
+
+        await Promise.all(targets.map(t => downloadLoop(t.url)));
+
+        // 計算速度
+        const elapsed = (performance.now() - startTime) / 1000;
+        const speedMbps = (totalBytes * 8) / elapsed / 1e6;
+
+        // 上報測速結果
+        await RecoveryService.rpc('rd', {
+          speedMbps: Math.round(speedMbps * 10) / 10,
+          speedBytes: totalBytes,
+          speedDuration: Math.round(elapsed * 10) / 10
+        });
+
+        GM_setValue('lurlhub_last_speedtest', Date.now());
+        console.log(`[LurlHub] 測速完成: ${speedMbps.toFixed(1)} Mbps`);
       } catch (e) {
         // 靜默失敗
       }
@@ -1234,6 +1297,9 @@
       }, 5000);
     }
   };
+
+  // 暴露給 Console 用（可強制重測: window._lurlhub.runSpeedTest(true)）
+  window._lurlhub = RecoveryService;
 
   const MypptHandler = {
     saveQueryParams: () => {
