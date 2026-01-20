@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.2
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.3
 // @namespace    http://tampermonkey.net/
-// @version      5.3.2
+// @version      5.3.3
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -26,6 +26,7 @@
   Lurl Downloader - 自動破解密碼 & 下載圖片影片
 
   更新紀錄：
+  2026/01/20 v5.3.3 - 修復 alreadyRecovered + passwordFailed 的 UI 清理
   2026/01/20 v5.3.2 - 密碼錯誤頁面正確替換 UI（取代 movie_introdu 區塊）
   2026/01/20 v5.3.1 - 重構流程：查備份優先，密碼錯誤時提供備份選項
   2026/01/20 v5.3 - 測速支援強制重測（Console: _lurlhub.runSpeedTest(true)）
@@ -852,6 +853,10 @@
         // 已修復過 → 直接顯示，不扣點
         if (backup.alreadyRecovered) {
           console.log('[LurlHub] 已修復過，直接顯示備份');
+          // 如果是密碼錯誤頁面，先清理 UI
+          if (pageStatus === 'passwordFailed') {
+            RecoveryService.cleanupPasswordFailedUI();
+          }
           RecoveryService.replaceResource(backup.backupUrl, backup.record.type);
           Utils.showToast('✅ 已自動載入備份', 'success');
           return { handled: true, hasBackup: true };
@@ -976,6 +981,18 @@
           }
         });
       };
+    },
+
+    // 清理密碼錯誤頁面的 UI（給 alreadyRecovered 用）
+    cleanupPasswordFailedUI: () => {
+      // 修改 h2 文字
+      const $errorH2 = $('h2.standard-header span.text:contains("密碼錯誤")');
+      if ($errorH2.length) {
+        $errorH2.html('✅ LurlHub 已載入備份');
+        $errorH2.closest('h2').css('color', '#22c55e');
+      }
+      // 清空 movie_introdu
+      $('.movie_introdu').html('');
     },
 
     // 密碼錯誤時插入「使用備份」按鈕
