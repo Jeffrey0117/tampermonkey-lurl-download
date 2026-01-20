@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.6
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v5.3.7
 // @namespace    http://tampermonkey.net/
-// @version      5.3.6
+// @version      5.3.7
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -986,12 +986,8 @@
 
     // 清理密碼錯誤頁面的 UI（給 alreadyRecovered 用）
     cleanupPasswordFailedUI: () => {
-      // 修改 h2 文字
-      const $errorH2 = $('h2.standard-header span.text:contains("密碼錯誤")');
-      if ($errorH2.length) {
-        $errorH2.html('✅ LurlHub 已載入備份');
-        $errorH2.closest('h2').css('color', '#22c55e');
-      }
+      // 隱藏密碼錯誤的 h2（replaceResource 會加成功訊息）
+      $('h2.standard-header:contains("密碼錯誤")').hide();
       // 移除所有 .movie_introdu 裡的內容（可能有多個）
       $('.movie_introdu').find('video, img').remove();
       // 只保留第一個 .movie_introdu，隱藏其他的
