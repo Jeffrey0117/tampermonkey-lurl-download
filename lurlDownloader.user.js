@@ -2763,7 +2763,7 @@
               margin-bottom: 4px;
             }
             .lurlhub-consent-version {
-              font-size: 12px; color: #64748b;
+              font-size: 12px; color: #cbd5e1;
             }
             .lurlhub-consent-body {
               padding: 24px 28px;
@@ -2771,7 +2771,7 @@
               flex: 1;
               font-size: 13px;
               line-height: 1.8;
-              color: #374151;
+              color: #1a1a1a;
             }
             .lurlhub-consent-body h3 {
               font-size: 14px;
@@ -2925,7 +2925,7 @@
               <h3>八、條款更新</h3>
               <p>本服務條款可能隨版本更新而修訂。重大變更時將透過版本更新提示通知使用者。繼續使用本工具即表示您同意最新版本的服務條款。</p>
 
-              <p style="color: #9ca3af; font-size: 11px; margin-top: 24px; text-align: center;">
+              <p style="font-size: 12px; margin-top: 24px; text-align: center;">
                 最後更新：2026 年 1 月 | LurlHub v${SCRIPT_VERSION} | MIT License
               </p>
             </div>
