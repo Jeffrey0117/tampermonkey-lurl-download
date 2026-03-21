@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.4.0
+// @version      6.4.1
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -77,7 +77,7 @@
   "use strict";
 
   /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.4.0';
+  const SCRIPT_VERSION = '6.4.1';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -2432,6 +2432,8 @@
     },
 
     autoFillPassword: () => {
+      // Guard: only attempt if password form actually exists on the page
+      if ($('#pasahaicsword').length === 0) return;
       const date = MypptHandler.getUploadDate();
       if (!date) return;
       MypptHandler.saveQueryParams();
@@ -2486,6 +2488,12 @@
         const $targetRow = $('div.row[style*="margin: 10px"][style*="border-style:solid"]');
         if ($targetRow.length) {
           $targetRow.append($button);
+        } else {
+          // Fallback: insert after first h2
+          const $h2 = $("h2").first();
+          if ($h2.length) {
+            $h2.after($button);
+          }
         }
       },
     },
@@ -2609,19 +2617,38 @@
           return;
         }
 
-        // 正常頁面，繼續執行
-        const contentType = MypptHandler.detectContentType();
-        if (contentType === "video") {
-          MypptHandler.videoDownloader.inject();
-          MypptHandler.captureToAPI("video");
-          // 如果有備份，監聯影片錯誤時 fallback
-          if (result.hasBackup) {
-            RecoveryService.watchVideoError(result.backup);
+        // 正常頁面，注入下載按鈕
+        const injectMyppt = () => {
+          const contentType = MypptHandler.detectContentType();
+          if (contentType === "video") {
+            MypptHandler.videoDownloader.inject();
+            if (document.getElementById('myppt-video-download-btn')) {
+              MypptHandler.captureToAPI("video");
+              if (result.hasBackup) {
+                RecoveryService.watchVideoError(result.backup);
+              }
+              return true;
+            }
+          } else {
+            MypptHandler.pictureDownloader.inject();
+            if (document.getElementById('myppt-download-btn')) {
+              MypptHandler.captureToAPI("image");
+              return true;
+            }
           }
-        } else {
-          MypptHandler.pictureDownloader.inject();
-          MypptHandler.captureToAPI("image");
+          return false;
+        };
+
+        // 嘗試注入，若失敗則輪詢重試（處理 DOM 尚未就緒的情況）
+        if (!injectMyppt()) {
+          let retries = 0;
+          const timer = setInterval(() => {
+            if (injectMyppt() || ++retries >= 10) {
+              clearInterval(timer);
+            }
+          }, 500);
         }
+
         // 在「✅助手啟動」h2 下方顯示品牌卡片
         const h2 = [...document.querySelectorAll('h2')].find(el => el.textContent.includes('✅'));
         if (h2) {
@@ -2733,12 +2760,15 @@
 
       tryTodayPassword: () => {
         if (LurlHandler.datePasswordHelper.isPasswordCorrect()) return false;
+        const cookieName = LurlHandler.datePasswordHelper.getCookieName();
+        if (!cookieName) return false;
+        // If password cookie was already set, don't try again
+        // (prevents infinite reload on no-password pages that show .login_span as metadata)
+        if (Utils.cookie.get(cookieName)) return false;
         const $dateSpan = $(".login_span").eq(1);
         if (!$dateSpan.length) return false;
         const date = Utils.extractMMDD($dateSpan.text());
         if (!date) return false;
-        const cookieName = LurlHandler.datePasswordHelper.getCookieName();
-        if (!cookieName) return false;
         Utils.cookie.set(cookieName, date);
         return true;
       },
@@ -2796,6 +2826,12 @@
         const $targetRow = $('div.row[style*="margin: 10px"][style*="border-style:solid"]');
         if ($targetRow.length) {
           $targetRow.append($button);
+        } else {
+          // Fallback: insert before first image or after first h2
+          const $h2 = $("h2").first();
+          if ($h2.length) {
+            $h2.after($button);
+          }
         }
       },
     },
@@ -2869,8 +2905,14 @@
           });
           $("#vjs_video_3").before($header);
           $header.append($button);
-        } else {
+        } else if ($h2List.length > 0) {
           $h2List.first().append($button);
+        } else {
+          // Fallback: insert before video player
+          const $video = $("video").first().closest("div");
+          if ($video.length) {
+            $video.before($("<div>", { css: { textAlign: "center", margin: "15px 0" } }).append($button));
+          }
         }
       },
     },
@@ -2947,20 +2989,39 @@
           return;
         }
 
-        // 正常頁面，繼續執行
-        const contentType = LurlHandler.detectContentType();
-        if (contentType === "video") {
-          LurlHandler.videoDownloader.inject();
-          LurlHandler.videoDownloader.replacePlayer();
-          LurlHandler.captureToAPI("video");
-          // 如果有備份，監聽影片錯誤時 fallback
-          if (result.hasBackup) {
-            RecoveryService.watchVideoError(result.backup);
+        // 正常頁面，注入下載按鈕
+        const injectLurl = () => {
+          const contentType = LurlHandler.detectContentType();
+          if (contentType === "video") {
+            LurlHandler.videoDownloader.inject();
+            if (document.getElementById('lurl-download-btn')) {
+              LurlHandler.videoDownloader.replacePlayer();
+              LurlHandler.captureToAPI("video");
+              if (result.hasBackup) {
+                RecoveryService.watchVideoError(result.backup);
+              }
+              return true;
+            }
+          } else {
+            LurlHandler.pictureDownloader.inject();
+            if (document.getElementById('lurl-img-download-btn')) {
+              LurlHandler.captureToAPI("image");
+              return true;
+            }
           }
-        } else {
-          LurlHandler.pictureDownloader.inject();
-          LurlHandler.captureToAPI("image");
+          return false;
+        };
+
+        // 嘗試注入，若失敗則輪詢重試（處理 DOM 尚未就緒的情況）
+        if (!injectLurl()) {
+          let retries = 0;
+          const timer = setInterval(() => {
+            if (injectLurl() || ++retries >= 10) {
+              clearInterval(timer);
+            }
+          }, 500);
         }
+
         // 在「✅助手啟動」h2 下方顯示品牌卡片
         const h2 = [...document.querySelectorAll('h2')].find(el => el.textContent.includes('✅'));
         if (h2) {
