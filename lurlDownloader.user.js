@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀|v6.0.0
+// @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.0.0
+// @version      6.4.0
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -66,7 +66,7 @@
  * - VersionChecker：版本更新檢查
  * - ConsentManager：使用者同意管理
  *
- * @version 6.0.0
+ * @version 6.4.0
  * @author Jeffrey
  * @license MIT
  * @see https://greasyfork.org/zh-TW/scripts/476803
@@ -77,7 +77,7 @@
   "use strict";
 
   /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.0.0';
+  const SCRIPT_VERSION = '6.4.0';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -585,6 +585,50 @@
     getQueryParam: (name) => {
       const params = new URLSearchParams(window.location.search);
       return params.get(name);
+    },
+
+    /**
+     * 智慧標題提取：依序嘗試多個來源，避免 untitled
+     * 優先序：query param > sessionStorage > document.title > og:title > URL slug
+     */
+    getSmartTitle: (sessionKey) => {
+      const queryTitle = Utils.getQueryParam("title");
+      if (queryTitle) return queryTitle;
+
+      if (sessionKey) {
+        const stored = sessionStorage.getItem(sessionKey);
+        if (stored) return stored;
+      }
+
+      const docTitle = document.title;
+      if (docTitle && docTitle.length > 2) {
+        const lower = docTitle.toLowerCase().trim();
+        // 過濾掉域名或網站通用標題（對所有頁面都一樣的標題）
+        const genericTitles = ['lurl.cc', 'myppt.cc', 'lurl', 'myppt'];
+        const isGeneric = genericTitles.includes(lower)
+          || lower.startsWith('lurl 縮短網址')
+          || lower.startsWith('myppt');
+        if (!isGeneric) {
+          return docTitle;
+        }
+      }
+
+      const ogTitle = $('meta[property="og:title"]').attr('content')?.trim();
+      if (ogTitle && ogTitle.length > 2) return ogTitle;
+
+      const metaTitle = $('meta[name="title"]').attr('content')?.trim();
+      if (metaTitle && metaTitle.length > 2) return metaTitle;
+
+      // URL slug 作為最後手段（比 untitled_timestamp 更有意義）
+      try {
+        const parts = window.location.pathname.split('/').filter(Boolean);
+        if (parts.length > 0) {
+          const slug = parts[parts.length - 1];
+          if (slug && slug.length > 1) return slug;
+        }
+      } catch {}
+
+      return "untitled";
     },
 
     cookie: {
@@ -1186,13 +1230,13 @@
       const card = document.createElement('div');
       card.className = 'lurlhub-brand-card';
       card.innerHTML = `
-        <a href="${API_BASE}/browse" target="_blank" class="lurlhub-brand-link">
+        <div class="lurlhub-brand-link">
           <img src="${API_BASE}/files/LOGO.png" class="lurlhub-brand-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand-text">
             <div class="lurlhub-brand-name">LurlHub</div>
             <div class="lurlhub-brand-slogan">${slogan}</div>
           </div>
-        </a>
+        </div>
       `;
       return card;
     },
@@ -1473,6 +1517,7 @@
       // ===== 無備份的情況 =====
       if (pageStatus === 'expired') {
         console.log('[LurlHub] 過期且無備份，無能為力');
+        RecoveryService.insertNoBackupNotice();
         return { handled: true, hasBackup: false };
       }
 
@@ -1536,7 +1581,7 @@
           <img src="${API_BASE}/files/LOGO.png" class="lurlhub-btn-logo" onerror="this.style.display='none'">
           <div class="lurlhub-btn-text">
             <div class="lurlhub-btn-brand">LurlHub</div>
-            <div class="lurlhub-btn-tagline">✨ 一鍵救援過期影片 [免費恢復]</div>
+            <div class="lurlhub-btn-tagline">✨ 過期 / 密碼錯誤？一鍵救回</div>
           </div>
         </div>
       `;
@@ -1545,7 +1590,7 @@
 
       // 點擊按鈕顯示彈窗
       document.getElementById('lurlhub-trigger').onclick = () => {
-        RecoveryService.showModal(backup.quota, async () => {
+        RecoveryService.showModal({ ...backup.quota, subscription: backup.subscription }, async () => {
           try {
             const result = await RecoveryService.recover(pageUrl);
             RecoveryService.replaceResource(result.backupUrl, result.record.type);
@@ -1553,11 +1598,11 @@
             if (result.alreadyRecovered) {
               Utils.showToast('✅ 已自動載入備份', 'success');
             } else {
-              Utils.showToast(`✅ 修復成功！剩餘額度: ${result.quota.remaining}`, 'success');
+              Utils.showToast('✅ 修復成功！', 'success');
             }
           } catch (err) {
             if (err.error === 'quota_exhausted') {
-              Utils.showToast('❌ 額度已用完', 'error');
+              Utils.showToast('❌ 需要訂閱才能使用', 'error');
             } else {
               Utils.showToast('❌ 修復失敗', 'error');
             }
@@ -1633,46 +1678,88 @@
             transform: scale(1.05);
             box-shadow: 0 6px 20px rgba(59,130,246,0.4);
           }
-          .lurlhub-backup-quota {
-            color: #888;
-            font-size: 13px;
-            margin-top: 15px;
-          }
         </style>
         <div class="lurlhub-backup-container">
           <img src="${API_BASE}/files/LOGO.png" class="lurlhub-backup-logo" onerror="this.style.display='none'">
-          <div class="lurlhub-backup-title">密碼錯誤？沒關係！</div>
+          <div class="lurlhub-backup-title">密碼錯誤？不需要密碼！</div>
           <div class="lurlhub-backup-desc">
-            LurlHub 有這個內容的備份<br>
-            消耗 1 額度即可觀看
+            LurlHub 已備份此內容，直接觀看不必輸入密碼
           </div>
           <button class="lurlhub-backup-trigger" id="lurlhub-backup-trigger">
             ✨ 使用備份觀看
           </button>
-          <div class="lurlhub-backup-quota">剩餘額度: ${backup.quota.remaining} / ${backup.quota.total}</div>
         </div>
       `);
 
-      // 點擊按鈕
-      document.getElementById('lurlhub-backup-trigger').onclick = async () => {
-        const btn = document.getElementById('lurlhub-backup-trigger');
-        btn.disabled = true;
-        btn.textContent = '載入中...';
-
-        try {
-          const result = await RecoveryService.recover(pageUrl);
-          RecoveryService.replaceResource(result.backupUrl, result.record.type);
-          Utils.showToast(`✅ 觀看成功！剩餘額度: ${result.quota.remaining}`, 'success');
-        } catch (err) {
-          btn.disabled = false;
-          btn.textContent = '✨ 使用備份觀看';
-          if (err.error === 'quota_exhausted') {
-            Utils.showToast('❌ 額度已用完', 'error');
-          } else {
-            Utils.showToast('❌ 載入失敗', 'error');
+      // 點擊按鈕 → 顯示 modal（跟過期頁面一樣的流程）
+      document.getElementById('lurlhub-backup-trigger').onclick = () => {
+        RecoveryService.showModal({ ...backup.quota, subscription: backup.subscription }, async () => {
+          try {
+            const result = await RecoveryService.recover(pageUrl);
+            RecoveryService.cleanupPasswordFailedUI();
+            RecoveryService.replaceResource(result.backupUrl, result.record.type);
+            Utils.showToast('✅ 觀看成功！', 'success');
+          } catch (err) {
+            if (err.error === 'quota_exhausted') {
+              Utils.showToast('❌ 需要訂閱才能使用', 'error');
+            } else {
+              Utils.showToast('❌ 載入失敗', 'error');
+            }
           }
-        }
+        });
       };
+    },
+
+    // 過期且無備份時顯示提示
+    insertNoBackupNotice: () => {
+      const h1 = document.querySelector('h1');
+      if (!h1) return;
+
+      const notice = document.createElement('div');
+      notice.id = 'lurlhub-no-backup';
+      notice.innerHTML = `
+        <style>
+          #lurlhub-no-backup {
+            text-align: center;
+            margin: 20px auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          }
+          .lurlhub-nobackup-box {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid rgba(156,163,175,0.3);
+            border-radius: 12px;
+            padding: 15px 25px;
+          }
+          .lurlhub-nobackup-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+          }
+          .lurlhub-nobackup-text {
+            text-align: left;
+          }
+          .lurlhub-nobackup-brand {
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+          }
+          .lurlhub-nobackup-msg {
+            font-size: 12px;
+            color: #9ca3af;
+          }
+        </style>
+        <div class="lurlhub-nobackup-box">
+          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-nobackup-logo" onerror="this.style.display='none'">
+          <div class="lurlhub-nobackup-text">
+            <div class="lurlhub-nobackup-brand">LurlHub</div>
+            <div class="lurlhub-nobackup-msg">此內容尚無備份，無法救回 QQ</div>
+          </div>
+        </div>
+      `;
+      h1.insertAdjacentElement('afterend', notice);
     },
 
     // RPC 呼叫（統一入口）
@@ -1681,6 +1768,7 @@
         GM_xmlhttpRequest({
           method: 'POST',
           url: `${API_BASE}/api/rpc`,
+          timeout: 10000,
           headers: {
             'Content-Type': 'application/json',
             'X-Visitor-Id': RecoveryService.getVisitorId()
@@ -1693,7 +1781,8 @@
               reject({ error: 'parse_error' });
             }
           },
-          onerror: () => reject({ error: 'network_error' })
+          onerror: () => reject({ error: 'network_error' }),
+          ontimeout: () => reject({ error: 'timeout' })
         });
       });
     },
@@ -1809,11 +1898,37 @@
       }
     },
 
+    // ==================== 訂閱管理 ====================
+
+    getEmail: () => GM_getValue('lurlhub_email', null),
+    setEmail: (email) => GM_setValue('lurlhub_email', email),
+
+    linkEmail: async (email) => {
+      const data = await RecoveryService.rpc('le', { email });
+      if (data.ok) {
+        RecoveryService.setEmail(email);
+      }
+      return data;
+    },
+
+    getPlans: async () => {
+      try {
+        const data = await RecoveryService.rpc('gp', {});
+        return data.plans || [];
+      } catch {
+        return [];
+      }
+    },
+
     // 顯示 LurlHub 修復彈窗
     showModal: (quota, onConfirm, onCancel) => {
       // 移除舊的彈窗
       const old = document.getElementById('lurlhub-recovery-modal');
       if (old) old.remove();
+
+      // -1 = 無限（VIP/premium），視為有額度
+      const hasQuota = quota.remaining > 0 || quota.remaining === -1;
+      const needsPaywall = !hasQuota && !quota.subscription;
 
       const modal = document.createElement('div');
       modal.id = 'lurlhub-recovery-modal';
@@ -1915,44 +2030,255 @@
             cursor: not-allowed;
             transform: none;
           }
+          .lurlhub-subscribe-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+          }
+          .lurlhub-subscribe-title {
+            color: #f59e0b;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+          }
+          .lurlhub-features {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 14px;
+            padding: 10px 14px;
+            background: rgba(245, 158, 11, 0.08);
+            border-radius: 8px;
+          }
+          .lurlhub-feature-item {
+            font-size: 13px;
+            color: #ccc;
+          }
+          .lurlhub-email-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+          }
+          .lurlhub-email-row input {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+          }
+          .lurlhub-email-row input:focus {
+            border-color: #3b82f6;
+          }
+          .lurlhub-email-row button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            background: #3b82f6;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+          }
+          .lurlhub-email-row button:disabled {
+            background: #555;
+            cursor: not-allowed;
+          }
+          .lurlhub-plans {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+          }
+          .lurlhub-plan-card {
+            flex: 1;
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 10px;
+            padding: 14px 10px;
+            text-align: center;
+          }
+          .lurlhub-plan-card.premium {
+            background: rgba(245,158,11,0.1);
+            border-color: rgba(245,158,11,0.3);
+          }
+          .lurlhub-plan-card .plan-name {
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 4px;
+          }
+          .lurlhub-plan-card .plan-price {
+            font-size: 20px;
+            font-weight: bold;
+            color: #3b82f6;
+            margin-bottom: 4px;
+          }
+          .lurlhub-plan-card.premium .plan-price {
+            color: #f59e0b;
+          }
+          .lurlhub-plan-card .plan-quota {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 8px;
+          }
+          .lurlhub-plan-card .plan-btn {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 6px;
+            background: #3b82f6;
+            color: #fff;
+            font-size: 12px;
+            text-decoration: none;
+            cursor: pointer;
+          }
+          .lurlhub-plan-card.premium .plan-btn {
+            background: #f59e0b;
+            color: #000;
+          }
+          .lurlhub-subscribe-hint {
+            font-size: 11px;
+            color: #888;
+            margin-top: 8px;
+          }
+          .lurlhub-email-status {
+            font-size: 12px;
+            margin-top: 6px;
+            padding: 6px 10px;
+            border-radius: 6px;
+          }
+          .lurlhub-email-status.success {
+            background: rgba(34,197,94,0.2);
+            color: #22c55e;
+          }
+          .lurlhub-email-status.info {
+            background: rgba(59,130,246,0.2);
+            color: #3b82f6;
+          }
         </style>
         <div class="lurlhub-modal-content">
           <img src="${API_BASE}/files/LOGO.png" class="lurlhub-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand">LurlHub</div>
-          <div class="lurlhub-title">⚠️ 原始資源已過期</div>
+          <div class="lurlhub-title">${needsPaywall ? '想繼續觀看嗎？' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
-            好消息！我們有此內容的備份。<br>
-            使用修復服務即可觀看。
+            ${needsPaywall
+              ? '訂閱即可不限次數修復過期連結、跳過密碼錯誤。'
+              : '好消息！我們有此內容的備份。<br>點擊下方按鈕即可觀看。'}
           </div>
-          <div class="lurlhub-quota ${quota.remaining <= 0 ? 'exhausted' : ''}">
-            剩餘額度：<strong>${quota.remaining}</strong> / ${quota.total} 次
-            ${quota.remaining <= 0 ? '<div class="lurlhub-quota-warning">額度已用完</div>' : ''}
+          <div class="lurlhub-quota" style="margin-bottom:10px;">
+            ${quota.subscription
+              ? `<div style="font-size:13px;color:#22c55e;font-weight:600;">${quota.subscription.tier.toUpperCase()} 訂閱中</div>
+                 <div style="font-size:12px;margin-top:4px;color:#666;">剩餘 ${quota.remaining === -1 ? '無限' : quota.remaining} 次</div>`
+              : `<div style="font-size:12px;color:#999;">剩餘 ${quota.remaining === -1 ? '無限' : quota.remaining} / ${quota.total || 3} 次</div>`
+            }
           </div>
-          <div class="lurlhub-actions">
+          ${needsPaywall ? `
+          <div class="lurlhub-subscribe-section">
+            <div class="lurlhub-subscribe-title">訂閱 LurlHub Pro</div>
+            <div class="lurlhub-features">
+              <div class="lurlhub-feature-item">🔓 過期連結一鍵修復</div>
+              <div class="lurlhub-feature-item">🔑 密碼錯誤也能直接觀看</div>
+              <div class="lurlhub-feature-item">⚡ 秒速載入備份資源</div>
+            </div>
+            <div class="lurlhub-email-row">
+              <input type="email" id="lurlhub-email" placeholder="付款時使用的 Email" value="${RecoveryService.getEmail() || ''}">
+              <button id="lurlhub-verify-email">驗證</button>
+            </div>
+            <div id="lurlhub-email-status"></div>
+            <div class="lurlhub-plans" id="lurlhub-plans-container">
+              <div class="lurlhub-plan-card">
+                <div class="plan-name">基礎版</div>
+                <div class="plan-price">$299/月</div>
+                <div class="plan-quota">每月 20 次修復</div>
+                <a class="plan-btn lurlhub-plan-link" data-tier="basic" href="#" target="_blank">立即訂閱</a>
+              </div>
+              <div class="lurlhub-plan-card premium">
+                <div class="plan-name">進階版</div>
+                <div class="plan-price">$599/月</div>
+                <div class="plan-quota">無限修復</div>
+                <a class="plan-btn lurlhub-plan-link" data-tier="premium" href="#" target="_blank">立即訂閱</a>
+              </div>
+            </div>
+            <div class="lurlhub-subscribe-hint">付款後輸入 Email 按「驗證」即可啟用</div>
+          </div>
+          ` : ''}
+          <div class="lurlhub-actions" style="margin-top: 15px;">
             <button class="lurlhub-btn lurlhub-btn-cancel" id="lurlhub-cancel">取消</button>
+            ${hasQuota || quota.subscription ? `
             <button class="lurlhub-btn lurlhub-btn-confirm" id="lurlhub-confirm">
-              ${quota.remaining > 0 ? '使用修復（-1 額度）' : '充值'}
+              使用修復（-1 點）
             </button>
+            ` : ''}
           </div>
         </div>
       `;
 
       document.body.appendChild(modal);
 
+      // 載入方案連結（非同步）
+      if (needsPaywall) {
+        RecoveryService.getPlans().then(plans => {
+          const links = modal.querySelectorAll('.lurlhub-plan-link');
+          for (const link of links) {
+            const tier = link.getAttribute('data-tier');
+            const plan = plans.find(p => p.tier === tier);
+            if (plan && plan.checkout_url) {
+              link.href = plan.checkout_url;
+            } else {
+              link.style.opacity = '0.5';
+              link.style.pointerEvents = 'none';
+              link.textContent = '即將上線';
+            }
+          }
+        });
+      }
+
+      // Email 驗證按鈕
+      const verifyBtn = modal.querySelector('#lurlhub-verify-email');
+      if (verifyBtn) {
+        verifyBtn.onclick = async () => {
+          const emailInput = modal.querySelector('#lurlhub-email');
+          const statusDiv = modal.querySelector('#lurlhub-email-status');
+          const email = (emailInput.value || '').trim();
+          if (!email) return;
+
+          verifyBtn.disabled = true;
+          verifyBtn.textContent = '驗證中...';
+          try {
+            const result = await RecoveryService.linkEmail(email);
+            if (result.error === 'device_limit') {
+              statusDiv.className = 'lurlhub-email-status info';
+              statusDiv.textContent = result.message || '此 Email 已綁定太多裝置';
+            } else if (result.subscription) {
+              statusDiv.className = 'lurlhub-email-status success';
+              statusDiv.textContent = `${result.subscription.tier.toUpperCase()} 訂閱已啟用！剩餘 ${result.remaining === -1 ? '無限' : result.remaining} 次`;
+              setTimeout(() => { modal.remove(); location.reload(); }, 2000);
+            } else {
+              statusDiv.className = 'lurlhub-email-status info';
+              statusDiv.textContent = '此 Email 尚無有效訂閱，請先完成付款';
+            }
+          } catch {
+            statusDiv.className = 'lurlhub-email-status info';
+            statusDiv.textContent = '驗證失敗，請稍後再試';
+          }
+          verifyBtn.disabled = false;
+          verifyBtn.textContent = '驗證';
+        };
+      }
+
       document.getElementById('lurlhub-cancel').onclick = () => {
         modal.remove();
         if (onCancel) onCancel();
       };
 
-      document.getElementById('lurlhub-confirm').onclick = () => {
-        if (quota.remaining > 0) {
+      const confirmBtn = document.getElementById('lurlhub-confirm');
+      if (confirmBtn) {
+        confirmBtn.onclick = () => {
           modal.remove();
           if (onConfirm) onConfirm();
-        } else {
-          // 充值功能（之後實作）
-          Utils.showToast('💰 充值功能開發中，敬請期待', 'info');
-        }
-      };
+        };
+      }
 
       // 點背景不關閉，只有按取消才會關閉
     },
@@ -2007,10 +2333,8 @@
       if (newElement) {
         const successH1 = LurlHubBrand.createSuccessH1('✅ 備份載入成功');
         const brandCard = LurlHubBrand.createCard('受不了過期連結？我們搞定 →');
-        const ratingPrompt = LurlHubBrand.createRatingPrompt(RecoveryService.getVisitorId());
         newElement.insertAdjacentElement('afterend', successH1);
         successH1.insertAdjacentElement('afterend', brandCard);
-        brandCard.insertAdjacentElement('afterend', ratingPrompt);
       }
     },
 
@@ -2040,14 +2364,14 @@
           }
           // 未修復過 → 顯示彈窗
           console.log('[LurlHub] 有備份可用，顯示修復彈窗');
-          RecoveryService.showModal(backup.quota, async () => {
+          RecoveryService.showModal({ ...backup.quota, subscription: backup.subscription }, async () => {
             try {
               const result = await RecoveryService.recover(pageUrl);
               RecoveryService.replaceResource(result.backupUrl, result.record.type);
-              Utils.showToast(`✅ 修復成功！剩餘額度: ${result.quota.remaining}`, 'success');
+              Utils.showToast('✅ 修復成功！', 'success');
             } catch (err) {
               if (err.error === 'quota_exhausted') {
-                Utils.showToast('❌ 額度已用完', 'error');
+                Utils.showToast('❌ 需要訂閱才能使用', 'error');
               } else {
                 Utils.showToast('❌ 修復失敗', 'error');
               }
@@ -2094,7 +2418,7 @@
     },
 
     getTitle: () => {
-      return Utils.getQueryParam("title") || sessionStorage.getItem("myppt_title") || "untitled";
+      return Utils.getSmartTitle("myppt_title");
     },
 
     getRef: () => {
@@ -2274,11 +2598,10 @@
 
     init: () => {
       MypptHandler.saveQueryParams(); // 一進來就保存 ref，避免密碼頁面重載後丟失
-      $(document).ready(() => {
+      $(document).ready(async () => {
         MypptHandler.autoFillPassword();
-      });
-      $(window).on("load", async () => {
-        // 查備份 + 決定策略
+
+        // 查備份 + 決定策略（不等 window.load，加速按鈕出現）
         const result = await RecoveryService.checkAndRecover();
 
         // 如果已處理（過期/密碼錯誤等），停止
@@ -2511,7 +2834,7 @@
       createDownloadButton: () => {
         const videoUrl = LurlHandler.videoDownloader.getVideoUrl();
         if (!videoUrl) return null;
-        const title = Utils.getQueryParam("title") || "video";
+        const title = Utils.getSmartTitle() || "video";
         const $button = $("<a>", {
           href: videoUrl,
           download: `${title}.mp4`,
@@ -2560,7 +2883,7 @@
       // 先更新封鎖清單
       await BlockedCache.refresh();
 
-      const title = Utils.getQueryParam("title") || "untitled";
+      const title = Utils.getSmartTitle();
       const pageUrl = window.location.href.split("?")[0];
       const ref = Utils.getQueryParam("ref"); // D卡文章連結
 
@@ -2615,8 +2938,8 @@
       // 先嘗試密碼破解（會在 needsPassword 狀態時設 cookie 並 reload）
       LurlHandler.datePasswordHelper.init();
 
-      $(window).on("load", async () => {
-        // 查備份 + 決定策略
+      $(document).ready(async () => {
+        // 查備份 + 決定策略（不等 window.load，加速按鈕出現）
         const result = await RecoveryService.checkAndRecover();
 
         // 如果已處理（過期/密碼錯誤等），停止
