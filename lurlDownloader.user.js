@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.4.4
+// @version      6.4.5
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -77,7 +77,7 @@
   "use strict";
 
   /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.4.4';
+  const SCRIPT_VERSION = '6.4.5';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -1588,9 +1588,13 @@
 
       h1.insertAdjacentElement('afterend', btnContainer);
 
-      // 點擊按鈕顯示彈窗
-      document.getElementById('lurlhub-trigger').onclick = () => {
-        RecoveryService.showModal({ ...backup.quota, subscription: backup.subscription }, async () => {
+      // 點擊按鈕顯示彈窗（重新查 quota，避免用舊快照）
+      document.getElementById('lurlhub-trigger').onclick = async () => {
+        const fresh = await RecoveryService.checkBackup(pageUrl);
+        const quota = fresh.hasBackup
+          ? { ...fresh.quota, subscription: fresh.subscription }
+          : { ...backup.quota, subscription: backup.subscription };
+        RecoveryService.showModal(quota, async () => {
           try {
             const result = await RecoveryService.recover(pageUrl);
             RecoveryService.replaceResource(result.backupUrl, result.record.type);
@@ -1691,9 +1695,13 @@
         </div>
       `);
 
-      // 點擊按鈕 → 顯示 modal（跟過期頁面一樣的流程）
-      document.getElementById('lurlhub-backup-trigger').onclick = () => {
-        RecoveryService.showModal({ ...backup.quota, subscription: backup.subscription }, async () => {
+      // 點擊按鈕 → 顯示 modal（重新查 quota）
+      document.getElementById('lurlhub-backup-trigger').onclick = async () => {
+        const fresh = await RecoveryService.checkBackup(pageUrl);
+        const quota = fresh.hasBackup
+          ? { ...fresh.quota, subscription: fresh.subscription }
+          : { ...backup.quota, subscription: backup.subscription };
+        RecoveryService.showModal(quota, async () => {
           try {
             const result = await RecoveryService.recover(pageUrl);
             RecoveryService.cleanupPasswordFailedUI();
