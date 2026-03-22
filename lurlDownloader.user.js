@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.4.1
+// @version      6.4.2
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -77,7 +77,7 @@
   "use strict";
 
   /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.4.1';
+  const SCRIPT_VERSION = '6.4.2';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -2853,16 +2853,12 @@
           src: videoUrl,
           controls: true,
           autoplay: true,
-          width: 640,
-          height: 360,
           preload: "metadata",
-          class: "vjs-tech",
           id: "vjs_video_3_html5_api",
-          tabIndex: -1,
-          role: "application",
-          "data-setup": '{"aspectRatio":"16:9"}',
+          css: { width: "100%", maxWidth: "100%", height: "auto" },
         });
         $("video").replaceWith($newVideo);
+        // 清理 Video.js 殘留的限制和自訂控制列
         $("#vjs_video_3").removeAttr("oncontextmenu controlslist");
         $(".vjs-control-bar").remove();
       },
