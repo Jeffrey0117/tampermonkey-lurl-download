@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.4.6
+// @version      6.4.7
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -77,7 +77,7 @@
   "use strict";
 
   /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.4.6';
+  const SCRIPT_VERSION = '6.4.7';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -2929,18 +2929,37 @@
       replacePlayer: () => {
         const videoUrl = LurlHandler.videoDownloader.getVideoUrl();
         if (!videoUrl) return;
-        const $newVideo = $("<video>", {
-          src: videoUrl,
-          controls: true,
-          autoplay: true,
-          preload: "metadata",
-          css: { width: "100%", maxWidth: "100%", height: "auto", display: "block" },
-        });
-        // 替換整個 Video.js 容器（而非只替換內部 <video>）
-        const $vjsContainer = $(".video-js").first();
-        if ($vjsContainer.length) {
-          $vjsContainer.replaceWith($newVideo);
+
+        // 就地修改：保留容器位置，只清掉 Video.js 限制
+        const $container = $(".video-js").first();
+        if ($container.length) {
+          // 移除 Video.js 的 class 和限制
+          $container
+            .removeClass()
+            .removeAttr("oncontextmenu controlslist style")
+            .css({ width: "100%", maxWidth: "100%", position: "relative" });
+          // 清掉 Video.js 附加的 UI 元件
+          $container.find(".vjs-control-bar, .vjs-poster, .vjs-loading-spinner, .vjs-big-play-button, .vjs-text-track-display, .vjs-modal-dialog").remove();
+          // 修改內部 video 元素
+          const $video = $container.find("video");
+          if ($video.length) {
+            $video
+              .attr({ src: videoUrl, controls: true, autoplay: true, preload: "metadata" })
+              .removeClass()
+              .removeAttr("oncontextmenu controlslist data-setup tabindex role style")
+              .css({ width: "100%", maxWidth: "100%", height: "auto", display: "block" });
+            $video[0].load();
+            $video[0].play().catch(() => {});
+          }
         } else {
+          // Fallback：沒有 Video.js 容器
+          const $newVideo = $("<video>", {
+            src: videoUrl,
+            controls: true,
+            autoplay: true,
+            preload: "metadata",
+            css: { width: "100%", maxWidth: "100%", height: "auto", display: "block" },
+          });
           $("video").replaceWith($newVideo);
         }
       },
