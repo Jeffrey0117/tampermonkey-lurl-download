@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.4.2
+// @version      6.4.3
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -77,7 +77,7 @@
   "use strict";
 
   /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.4.2';
+  const SCRIPT_VERSION = '6.4.3';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -2207,7 +2207,7 @@
             <button class="lurlhub-btn lurlhub-btn-cancel" id="lurlhub-cancel">取消</button>
             ${hasQuota || quota.subscription ? `
             <button class="lurlhub-btn lurlhub-btn-confirm" id="lurlhub-confirm">
-              使用修復（-1 點）
+              使用修復（消耗 1 點）
             </button>
             ` : ''}
           </div>
