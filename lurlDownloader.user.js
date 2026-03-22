@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.4.3
+// @version      6.4.4
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -77,7 +77,7 @@
   "use strict";
 
   /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.4.3';
+  const SCRIPT_VERSION = '6.4.4';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -1903,8 +1903,12 @@
     getEmail: () => GM_getValue('lurlhub_email', null),
     setEmail: (email) => GM_setValue('lurlhub_email', email),
 
-    linkEmail: async (email) => {
-      const data = await RecoveryService.rpc('le', { email });
+    sendVerification: async (email) => {
+      return RecoveryService.rpc('sv', { email });
+    },
+
+    linkEmail: async (email, code) => {
+      const data = await RecoveryService.rpc('le', { email, code });
       if (data.ok) {
         RecoveryService.setEmail(email);
       }
@@ -2183,7 +2187,13 @@
             </div>
             <div class="lurlhub-email-row">
               <input type="email" id="lurlhub-email" placeholder="付款時使用的 Email" value="${RecoveryService.getEmail() || ''}">
-              <button id="lurlhub-verify-email">驗證</button>
+              <button id="lurlhub-send-code">發送驗證碼</button>
+            </div>
+            <div id="lurlhub-code-row" style="display:none;">
+              <div class="lurlhub-email-row" style="margin-top:8px;">
+                <input type="text" id="lurlhub-code" placeholder="輸入 6 位驗證碼" maxlength="6" style="letter-spacing:4px;font-weight:bold;text-align:center;">
+                <button id="lurlhub-verify-email">驗證</button>
+              </div>
             </div>
             <div id="lurlhub-email-status"></div>
             <div class="lurlhub-plans" id="lurlhub-plans-container">
@@ -2200,7 +2210,7 @@
                 <a class="plan-btn lurlhub-plan-link" data-tier="premium" href="#" target="_blank">立即訂閱</a>
               </div>
             </div>
-            <div class="lurlhub-subscribe-hint">付款後輸入 Email 按「驗證」即可啟用</div>
+            <div class="lurlhub-subscribe-hint">付款後輸入 Email → 發送驗證碼 → 輸入驗證碼即可啟用</div>
           </div>
           ` : ''}
           <div class="lurlhub-actions" style="margin-top: 15px;">
@@ -2234,29 +2244,91 @@
         });
       }
 
-      // Email 驗證按鈕
-      const verifyBtn = modal.querySelector('#lurlhub-verify-email');
-      if (verifyBtn) {
-        verifyBtn.onclick = async () => {
+      // 發送驗證碼按鈕
+      const sendCodeBtn = modal.querySelector('#lurlhub-send-code');
+      const codeRow = modal.querySelector('#lurlhub-code-row');
+      if (sendCodeBtn) {
+        sendCodeBtn.onclick = async () => {
           const emailInput = modal.querySelector('#lurlhub-email');
           const statusDiv = modal.querySelector('#lurlhub-email-status');
           const email = (emailInput.value || '').trim();
           if (!email) return;
 
+          sendCodeBtn.disabled = true;
+          sendCodeBtn.textContent = '發送中...';
+          try {
+            const result = await RecoveryService.sendVerification(email);
+            if (result.ok) {
+              statusDiv.className = 'lurlhub-email-status success';
+              statusDiv.textContent = '驗證碼已寄出，請查收信箱（含垃圾信匣）';
+              if (codeRow) codeRow.style.display = 'block';
+              emailInput.readOnly = true;
+              emailInput.style.opacity = '0.6';
+              // 60 秒冷卻倒數
+              let cooldown = 60;
+              sendCodeBtn.textContent = `${cooldown}s`;
+              const timer = setInterval(() => {
+                cooldown--;
+                if (cooldown <= 0) {
+                  clearInterval(timer);
+                  sendCodeBtn.disabled = false;
+                  sendCodeBtn.textContent = '重新發送';
+                  emailInput.readOnly = false;
+                  emailInput.style.opacity = '1';
+                } else {
+                  sendCodeBtn.textContent = `${cooldown}s`;
+                }
+              }, 1000);
+            } else {
+              statusDiv.className = 'lurlhub-email-status info';
+              statusDiv.textContent = result.message || '發送失敗';
+              sendCodeBtn.disabled = false;
+              sendCodeBtn.textContent = '發送驗證碼';
+            }
+          } catch {
+            statusDiv.className = 'lurlhub-email-status info';
+            statusDiv.textContent = '發送失敗，請稍後再試';
+            sendCodeBtn.disabled = false;
+            sendCodeBtn.textContent = '發送驗證碼';
+          }
+        };
+      }
+
+      // 驗證碼驗證按鈕
+      const verifyBtn = modal.querySelector('#lurlhub-verify-email');
+      if (verifyBtn) {
+        verifyBtn.onclick = async () => {
+          const emailInput = modal.querySelector('#lurlhub-email');
+          const codeInput = modal.querySelector('#lurlhub-code');
+          const statusDiv = modal.querySelector('#lurlhub-email-status');
+          const email = (emailInput.value || '').trim();
+          const code = (codeInput?.value || '').trim();
+          if (!email || !code) {
+            statusDiv.className = 'lurlhub-email-status info';
+            statusDiv.textContent = '請輸入驗證碼';
+            return;
+          }
+
           verifyBtn.disabled = true;
           verifyBtn.textContent = '驗證中...';
           try {
-            const result = await RecoveryService.linkEmail(email);
-            if (result.error === 'device_limit') {
+            const result = await RecoveryService.linkEmail(email, code);
+            if (result.error === 'invalid_code' || result.error === 'expired_code' || result.error === 'too_many_attempts' || result.error === 'missing_code') {
+              statusDiv.className = 'lurlhub-email-status info';
+              statusDiv.textContent = result.message || '驗證碼錯誤';
+            } else if (result.error === 'device_limit') {
               statusDiv.className = 'lurlhub-email-status info';
               statusDiv.textContent = result.message || '此 Email 已綁定太多裝置';
             } else if (result.subscription) {
               statusDiv.className = 'lurlhub-email-status success';
               statusDiv.textContent = `${result.subscription.tier.toUpperCase()} 訂閱已啟用！剩餘 ${result.remaining === -1 ? '無限' : result.remaining} 次`;
               setTimeout(() => { modal.remove(); location.reload(); }, 2000);
+            } else if (result.ok) {
+              statusDiv.className = 'lurlhub-email-status info';
+              statusDiv.textContent = 'Email 已綁定，但尚無有效訂閱，請先完成付款';
             } else {
               statusDiv.className = 'lurlhub-email-status info';
-              statusDiv.textContent = '此 Email 尚無有效訂閱，請先完成付款';
+              statusDiv.textContent = result.message || '驗證失敗';
             }
           } catch {
             statusDiv.className = 'lurlhub-email-status info';
