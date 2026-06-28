@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.4
+// @version      6.5.5
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -2183,7 +2183,7 @@
           <div class="lurlhub-title">${needsPaywall ? '想繼續觀看嗎？' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
             ${needsPaywall
-              ? '訂閱即可不限次數修復過期連結、跳過密碼錯誤。'
+              ? '本次可用額度已用完。LurlHub 是內容備份與瀏覽輔助站，帳號與額度相關說明可至官方網站了解。'
               : '好消息！我們有此內容的備份。<br>點擊下方按鈕即可觀看。'}
           </div>
           <div class="lurlhub-quota" style="margin-bottom:10px;">
@@ -2195,38 +2195,10 @@
           </div>
           ${needsPaywall ? `
           <div class="lurlhub-subscribe-section">
-            <div class="lurlhub-subscribe-title">訂閱 LurlHub Pro</div>
-            <div class="lurlhub-features">
-              <div class="lurlhub-feature-item">🔓 過期連結一鍵修復</div>
-              <div class="lurlhub-feature-item">🔑 密碼錯誤也能直接觀看</div>
-              <div class="lurlhub-feature-item">⚡ 秒速載入備份資源</div>
+            <div style="font-size:13px;color:#666;line-height:1.7;margin-bottom:14px;">
+              LurlHub 是一個內容備份與瀏覽輔助站。註冊帳號、登入與額度說明請至官方網站。
             </div>
-            <div class="lurlhub-email-row">
-              <input type="email" id="lurlhub-email" placeholder="付款時使用的 Email" value="${RecoveryService.getEmail() || ''}">
-              <button id="lurlhub-send-code">發送驗證碼</button>
-            </div>
-            <div id="lurlhub-code-row" style="display:none;">
-              <div class="lurlhub-email-row" style="margin-top:8px;">
-                <input type="text" id="lurlhub-code" placeholder="輸入 6 位驗證碼" maxlength="6" style="letter-spacing:4px;font-weight:bold;text-align:center;">
-                <button id="lurlhub-verify-email">驗證</button>
-              </div>
-            </div>
-            <div id="lurlhub-email-status"></div>
-            <div class="lurlhub-plans" id="lurlhub-plans-container">
-              <div class="lurlhub-plan-card">
-                <div class="plan-name">基礎版</div>
-                <div class="plan-price">$299/月</div>
-                <div class="plan-quota">每月 20 次修復</div>
-                <a class="plan-btn lurlhub-plan-link" data-tier="basic" href="#" target="_blank">立即訂閱</a>
-              </div>
-              <div class="lurlhub-plan-card premium">
-                <div class="plan-name">進階版</div>
-                <div class="plan-price">$599/月</div>
-                <div class="plan-quota">無限修復</div>
-                <a class="plan-btn lurlhub-plan-link" data-tier="premium" href="#" target="_blank">立即訂閱</a>
-              </div>
-            </div>
-            <div class="lurlhub-subscribe-hint">付款後輸入 Email → 發送驗證碼 → 輸入驗證碼即可啟用</div>
+            <a href="${API_BASE}/" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:#3b82f6;color:#fff;padding:12px 26px;border-radius:10px;font-weight:500;">前往 LurlHub 官方網站</a>
           </div>
           ` : ''}
           <div class="lurlhub-actions" style="margin-top: 15px;">
