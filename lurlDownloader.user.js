@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.2
+// @version      6.5.3
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1631,6 +1631,9 @@
 
     // 密碼錯誤時插入「使用備份」按鈕
     insertBackupButton: (backup, pageUrl) => {
+      // 防重複注入：已經有備份卡就不再插（避免流程跑兩次時疊出兩張）
+      if (document.querySelector('.lurlhub-backup-container')) return;
+
       // 找到密碼錯誤的 h2 並修改文字
       const $errorH2 = $('h2.standard-header span.text:contains("密碼錯誤")');
       if ($errorH2.length) {
@@ -1638,9 +1641,12 @@
         $errorH2.closest('h2').css('color', '#3b82f6');
       }
 
-      // 找到 movie_introdu 區塊並替換內容
-      const $movieSection = $('.movie_introdu');
-      if (!$movieSection.length) return;
+      // 找到 movie_introdu 區塊並替換內容。頁面可能有多個 .movie_introdu，
+      // 只填「第一個」、其餘隱藏，否則每個都被塞一張備份卡 → 重複顯示
+      const $allSections = $('.movie_introdu');
+      if (!$allSections.length) return;
+      $allSections.not(':first').hide();
+      const $movieSection = $allSections.first();
 
       $movieSection.html(`
         <style>
