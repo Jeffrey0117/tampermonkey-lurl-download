@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.3
+// @version      6.5.4
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1634,12 +1634,8 @@
       // 防重複注入：已經有備份卡就不再插（避免流程跑兩次時疊出兩張）
       if (document.querySelector('.lurlhub-backup-container')) return;
 
-      // 找到密碼錯誤的 h2 並修改文字
-      const $errorH2 = $('h2.standard-header span.text:contains("密碼錯誤")');
-      if ($errorH2.length) {
-        $errorH2.html('🎬 LurlHub 救援模式');
-        $errorH2.closest('h2').css('color', '#3b82f6');
-      }
+      // 不動原生「密碼錯誤」訊息與密碼輸入欄：密碼寫在文章裡，要留給使用者自己填。
+      // 備份只是「真的找不到密碼」時的次要選項，附加在下面，不取代密碼流程。
 
       // 找到 movie_introdu 區塊並替換內容。頁面可能有多個 .movie_introdu，
       // 只填「第一個」、其餘隱藏，否則每個都被塞一張備份卡 → 重複顯示
@@ -1648,11 +1644,13 @@
       $allSections.not(':first').hide();
       const $movieSection = $allSections.first();
 
-      $movieSection.html(`
+      $movieSection.append(`
         <style>
           .lurlhub-backup-container {
             text-align: center;
-            padding: 30px 20px;
+            padding: 24px 20px;
+            margin-top: 24px;
+            border-top: 1px solid rgba(0,0,0,0.08);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           }
           .lurlhub-backup-logo {
@@ -1695,9 +1693,9 @@
         </style>
         <div class="lurlhub-backup-container">
           <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-backup-logo" onerror="this.style.display='none'">
-          <div class="lurlhub-backup-title">密碼錯誤？不需要密碼！</div>
+          <div class="lurlhub-backup-title">不知道密碼？</div>
           <div class="lurlhub-backup-desc">
-            LurlHub 已備份此內容，直接觀看不必輸入密碼
+            密碼通常寫在原文章裡，輸入後重新整理即可。<br>真的找不到？LurlHub 已備份此內容，可直接觀看。
           </div>
           <button class="lurlhub-backup-trigger" id="lurlhub-backup-trigger">
             ✨ 使用備份觀看
