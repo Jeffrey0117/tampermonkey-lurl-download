@@ -1,7 +1,9 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.4.7
+// @version      6.5.1
+// @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
+// @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
 // @author       Jeffrey
 // @match        https://lurl.cc/*
@@ -76,8 +78,10 @@
 (function ($) {
   "use strict";
 
-  /** 腳本版本號，用於遠端版本檢查與強制更新判斷 */
-  const SCRIPT_VERSION = '6.4.7';
+  /** 腳本版本號，用於遠端版本檢查與強制更新判斷。
+   *  直接讀 GM_info（= @version header），避免常數與 header 脫鉤導致
+   *  裝了新版仍被誤判成舊版、無限要求更新。 */
+  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '6.5.0';
 
   /** API 驗證 Token，伺服器端用此辨識合法的腳本請求 */
   const CLIENT_TOKEN = 'lurl-script-2026';
@@ -2514,8 +2518,36 @@
     autoFillPassword: () => {
       // Guard: only attempt if password form actually exists on the page
       if ($('#pasahaicsword').length === 0) return;
+
+      // 防止無限 reload — 檢查是否已經嘗試過
+      const url = window.location.href;
+      const match = url.match(/myppt\.cc\/(\w+)/);
+      if (!match) return;
+      const pageId = match[1];
+      const attemptKey = `myppt_pwd_attempt_${pageId}`;
+
+      // 如果已經嘗試過且當前頁面顯示密碼錯誤，不再自動 reload
+      const $statusSpan = $('#back_top .container.NEWii_con section:nth-child(6) h2 span');
+      const statusText = $statusSpan.text();
+      if (statusText.includes('錯誤') && sessionStorage.getItem(attemptKey)) {
+        // 密碼錯誤，顯示手動輸入提示
+        const $h2 = $statusSpan.closest('h2');
+        $h2.after(`
+          <div style="margin:15px 0;padding:15px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;color:#856404;">
+            <strong>💡 提示</strong><br>
+            自動密碼嘗試失敗，請手動輸入正確密碼後重新整理頁面。<br>
+            <small style="opacity:0.8;">（或使用 LurlHub 備份功能跳過密碼）</small>
+          </div>
+        `);
+        return;
+      }
+
       const date = MypptHandler.getUploadDate();
       if (!date) return;
+
+      // 記錄嘗試
+      sessionStorage.setItem(attemptKey, Date.now());
+
       MypptHandler.saveQueryParams();
       $("#pasahaicsword").val(date);
       $("#main_fjim60unBU").click();
@@ -2692,12 +2724,13 @@
         // 查備份 + 決定策略（不等 window.load，加速按鈕出現）
         const result = await RecoveryService.checkAndRecover();
 
-        // 如果已處理（過期/密碼錯誤等），停止
-        if (result.handled) {
+        // 只有真正無法操作的情況（過期且無備份）才完全停止
+        // 密碼錯誤有備份時仍要注入下載按鈕（使用者可能已解鎖或有備份可看）
+        if (result.handled && result.pageStatus === 'expired' && !result.hasBackup) {
           return;
         }
 
-        // 正常頁面，注入下載按鈕
+        // 注入下載按鈕（包括 passwordFailed 但有備份的情況）
         const injectMyppt = () => {
           const contentType = MypptHandler.detectContentType();
           if (contentType === "video") {
@@ -2750,16 +2783,50 @@
    *   - 路由變更監聽：SPA 頁面切換時自動重新載入以確保腳本正確執行
    */
   const DcardHandler = {
+    // 清掉 Dcard 站名／看板尾巴："標題 - 西斯板 | Dcard" / "標題 - 西斯板 Dcard" / "標題 | Dcard"
+    cleanTitle: (t) => {
+      if (!t) return "";
+      t = String(t).replace(/[\r\n]+/g, " ").trim();
+      t = t.replace(/\s*[|｜]\s*Dcard\s*$/i, "");
+      t = t.replace(/\s*[-–—]\s*[^-–—|｜]{1,10}板\s*$/i, "");
+      t = t.replace(/\s*Dcard\s*$/i, "");
+      return t.trim() || String(t).replace(/[\r\n]+/g, " ").trim();
+    },
+
+    // 取「這個 lurl 連結所在文章」的標題：往上找 <article> 再取其標題元素。
+    // 比 document.title 可靠——列表頁每張卡各有標題（不會抓到看板名），也避開 SPA 切頁時 document.title 還沒更新。
+    getLinkTitle: (linkEl) => {
+      const clean = DcardHandler.cleanTitle;
+      try {
+        const article = linkEl.closest("article") || linkEl.closest('[role="article"]') || linkEl.closest("[data-key]");
+        if (article) {
+          const h = article.querySelector("h1, h2, h3, h4");
+          if (h && h.textContent && h.textContent.trim().length > 1) return clean(h.textContent);
+        }
+      } catch (e) {}
+      try {
+        const h1 = document.querySelector("article h1, main h1, h1");
+        if (h1 && h1.textContent && h1.textContent.trim().length > 1) {
+          const t = h1.textContent.trim();
+          if (!/^dcard$/i.test(t)) return clean(t);
+        }
+      } catch (e) {}
+      return clean(document.title);
+    },
+
     interceptLinks: () => {
       const selector = 'a[href^="https://lurl.cc/"], a[href^="https://myppt.cc/"]';
       $(document).on("click", selector, function (e) {
         e.preventDefault();
         const href = $(this).attr("href");
-        const $allLinks = $(selector);
-        const index = $allLinks.index(this) + 1;
-        const totalLinks = $allLinks.length;
-        const baseTitle = document.title;
-        const title = totalLinks > 1
+        const linkEl = this;
+        const baseTitle = DcardHandler.getLinkTitle(linkEl);
+        // 同一篇文章內若有多個 lurl 連結，序號用「該文章內」的，而非全頁
+        const scope = linkEl.closest("article") || document;
+        const $links = $(scope).find(selector);
+        const index = $links.index(linkEl) + 1;
+        const total = $links.length;
+        const title = total > 1
           ? encodeURIComponent(`${baseTitle}_${index}`)
           : encodeURIComponent(baseTitle);
         const ref = encodeURIComponent(window.location.href);
@@ -2933,11 +3000,14 @@
         // 就地修改：保留容器位置，只清掉 Video.js 限制
         const $container = $(".video-js").first();
         if ($container.length) {
-          // 移除 Video.js 的 class 和限制
+          // 記住容器原始尺寸，避免移除 style 後塌陷（底下廣告/文字會蓋上來）
+          const origW = $container[0].offsetWidth;
+          const origH = $container[0].offsetHeight;
+          // 移除 Video.js 的 class 和限制，但保留佈局尺寸
           $container
             .removeClass()
             .removeAttr("oncontextmenu controlslist style")
-            .css({ width: "100%", maxWidth: "100%", position: "relative" });
+            .css({ width: origW + "px", maxWidth: "100%", minHeight: origH + "px", maxHeight: "80vh", position: "relative", overflow: "hidden" });
           // 清掉 Video.js 附加的 UI 元件
           $container.find(".vjs-control-bar, .vjs-poster, .vjs-loading-spinner, .vjs-big-play-button, .vjs-text-track-display, .vjs-modal-dialog").remove();
           // 修改內部 video 元素
@@ -2947,7 +3017,7 @@
               .attr({ src: videoUrl, controls: true, autoplay: true, preload: "metadata" })
               .removeClass()
               .removeAttr("oncontextmenu controlslist data-setup tabindex role style")
-              .css({ width: "100%", maxWidth: "100%", height: "auto", display: "block" });
+              .css({ width: "100%", maxWidth: "100%", height: "auto", maxHeight: "80vh", display: "block", objectFit: "contain" });
             $video[0].load();
             $video[0].play().catch(() => {});
           }
@@ -2958,7 +3028,7 @@
             controls: true,
             autoplay: true,
             preload: "metadata",
-            css: { width: "100%", maxWidth: "100%", height: "auto", display: "block" },
+            css: { width: "100%", maxWidth: "100%", height: "auto", maxHeight: "80vh", display: "block", objectFit: "contain" },
           });
           $("video").replaceWith($newVideo);
         }
@@ -2996,12 +3066,10 @@
         $button.attr("id", "lurl-download-btn");
         const $h2List = $("h2");
         if ($h2List.length === 3) {
-          const $header = $("<h2>", {
-            text: "✅助手啟動",
-            css: { color: "white", textAlign: "center", marginTop: "25px" },
-          });
-          $("#vjs_video_3").before($header);
-          $header.append($button);
+          // 改寫第一個 h2 文字 + 附加按鈕（不新增 DOM 元素，避免撐開佈局導致文字蓋住影片）
+          const $firstH2 = $h2List.first();
+          $firstH2.text("✅助手啟動").css({ color: "white", textAlign: "center" });
+          $firstH2.append($button);
         } else if ($h2List.length > 0) {
           $h2List.first().append($button);
         } else {
@@ -3081,12 +3149,13 @@
         // 查備份 + 決定策略（不等 window.load，加速按鈕出現）
         const result = await RecoveryService.checkAndRecover();
 
-        // 如果已處理（過期/密碼錯誤等），停止
-        if (result.handled) {
+        // 只有真正無法操作的情況（過期且無備份）才完全停止
+        // 密碼錯誤有備份時仍要注入下載按鈕（使用者可能已解鎖或有備份可看）
+        if (result.handled && result.pageStatus === 'expired' && !result.hasBackup) {
           return;
         }
 
-        // 正常頁面，注入下載按鈕
+        // 注入下載按鈕（包括 passwordFailed 但有備份的情況）
         const injectLurl = () => {
           const contentType = LurlHandler.detectContentType();
           if (contentType === "video") {
