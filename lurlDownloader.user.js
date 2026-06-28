@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.1
+// @version      6.5.2
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1235,7 +1235,7 @@
       card.className = 'lurlhub-brand-card';
       card.innerHTML = `
         <div class="lurlhub-brand-link">
-          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-brand-logo" onerror="this.style.display='none'">
+          <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-brand-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand-text">
             <div class="lurlhub-brand-name">LurlHub</div>
             <div class="lurlhub-brand-slogan">${slogan}</div>
@@ -1582,7 +1582,7 @@
           }
         </style>
         <div class="lurlhub-btn-main" id="lurlhub-trigger">
-          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-btn-logo" onerror="this.style.display='none'">
+          <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-btn-logo" onerror="this.style.display='none'">
           <div class="lurlhub-btn-text">
             <div class="lurlhub-btn-brand">LurlHub</div>
             <div class="lurlhub-btn-tagline">✨ 過期 / 密碼錯誤？一鍵救回</div>
@@ -1688,7 +1688,7 @@
           }
         </style>
         <div class="lurlhub-backup-container">
-          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-backup-logo" onerror="this.style.display='none'">
+          <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-backup-logo" onerror="this.style.display='none'">
           <div class="lurlhub-backup-title">密碼錯誤？不需要密碼！</div>
           <div class="lurlhub-backup-desc">
             LurlHub 已備份此內容，直接觀看不必輸入密碼
@@ -1764,7 +1764,7 @@
           }
         </style>
         <div class="lurlhub-nobackup-box">
-          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-nobackup-logo" onerror="this.style.display='none'">
+          <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-nobackup-logo" onerror="this.style.display='none'">
           <div class="lurlhub-nobackup-text">
             <div class="lurlhub-nobackup-brand">LurlHub</div>
             <div class="lurlhub-nobackup-msg">此內容尚無備份，無法救回 QQ</div>
@@ -2174,7 +2174,7 @@
           }
         </style>
         <div class="lurlhub-modal-content">
-          <img src="${API_BASE}/files/LOGO.png" class="lurlhub-logo" onerror="this.style.display='none'">
+          <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand">LurlHub</div>
           <div class="lurlhub-title">${needsPaywall ? '想繼續觀看嗎？' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
@@ -3421,7 +3421,7 @@
           </style>
           <div class="lurlhub-consent-container">
             <div class="lurlhub-consent-header">
-              <img src="${API_BASE}/files/LOGO.png" class="lurlhub-consent-logo" onerror="this.style.display='none'">
+              <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-consent-logo" onerror="this.style.display='none'">
               <div class="lurlhub-consent-brand">LurlHub 瀏覽輔助工具</div>
               <div class="lurlhub-consent-version">v${SCRIPT_VERSION} | 服務條款與隱私政策</div>
             </div>
