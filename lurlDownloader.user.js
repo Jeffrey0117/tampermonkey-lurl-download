@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.7
+// @version      6.5.8
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -661,12 +661,16 @@
       // 只進 catch、不給提示 → 使用者按了「沒反應」。改用 GM_xmlhttpRequest（已 @grant）
       // 跨域抓 blob 再觸發下載，並加上可見提示與延後釋放 blobURL。
       Utils.showToast("開始下載…", "info", 3000);
+      // CDN（lurl.cc）會擋沒帶 Referer 的請求 → 回 403。瀏覽器直接點圖會自動帶 Referer，
+      // 但 GM_xmlhttpRequest 預設不帶頁面 Referer，所以要手動補上頁面來源（Tampermonkey 允許）。
       return new Promise((resolve) => {
         try {
           GM_xmlhttpRequest({
             method: "GET",
             url: url,
             responseType: "blob",
+            headers: { Referer: location.href, Origin: location.origin },
+            anonymous: false,
             onload: (res) => {
               try {
                 if (res.status >= 400 || !res.response) {
