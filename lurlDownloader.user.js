@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.5
+// @version      6.5.6
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -656,21 +656,50 @@
       }).showToast();
     },
 
-    downloadFile: async (url, filename) => {
-      try {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
-      } catch (error) {
-        console.error("下載失敗:", error);
-      }
+    downloadFile: (url, filename) => {
+      // 媒體多在 lurlX.lurl.cc / myppt CDN（跨子域＝跨域）。用 fetch 會被 CORS 擋，
+      // 只進 catch、不給提示 → 使用者按了「沒反應」。改用 GM_xmlhttpRequest（已 @grant）
+      // 跨域抓 blob 再觸發下載，並加上可見提示與延後釋放 blobURL。
+      Utils.showToast("開始下載…", "info", 3000);
+      return new Promise((resolve) => {
+        try {
+          GM_xmlhttpRequest({
+            method: "GET",
+            url: url,
+            responseType: "blob",
+            onload: (res) => {
+              try {
+                if (res.status >= 400 || !res.response) {
+                  Utils.showToast("下載失敗（" + res.status + "）", "error");
+                  return resolve();
+                }
+                const blobUrl = URL.createObjectURL(res.response);
+                const link = document.createElement("a");
+                link.href = blobUrl;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+                Utils.showToast("下載完成", "success", 2500);
+              } catch (e) {
+                console.error("下載失敗:", e);
+                Utils.showToast("下載失敗", "error");
+              }
+              resolve();
+            },
+            onerror: (e) => {
+              console.error("下載失敗:", e);
+              Utils.showToast("下載失敗，請稍後再試", "error");
+              resolve();
+            },
+          });
+        } catch (e) {
+          console.error("下載失敗:", e);
+          Utils.showToast("下載失敗", "error");
+          resolve();
+        }
+      });
     },
 
     extractThumbnail: (videoElement) => {
