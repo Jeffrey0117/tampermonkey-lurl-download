@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.6
+// @version      6.5.7
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -711,15 +711,25 @@
             return;
           }
 
-          // 確保影片已載入
+          // 確保影片已載入。注意：影片來自跨域 CDN，畫到 canvas 會「污染」canvas，
+          // toDataURL 會丟 SecurityError。這個縮圖只是順便擷取，伺服器端會用 ffmpeg 自己補，
+          // 所以失敗就 resolve(null) 即可——務必包 try/catch，否則在 onseeked 回調裡會變成
+          // uncaught error（紅字 SecurityError: Tainted canvases may not be exported）。
+          let captured = false;
           const capture = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = video.videoWidth || 320;
-            canvas.height = video.videoHeight || 180;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-            resolve(dataUrl);
+            if (captured) return;
+            captured = true;
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = video.videoWidth || 320;
+              canvas.height = video.videoHeight || 180;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL("image/jpeg", 0.7));
+            } catch (e) {
+              // 跨域污染 → 無法匯出縮圖，交給伺服器端補
+              resolve(null);
+            }
           };
 
           if (video.readyState >= 2) {
