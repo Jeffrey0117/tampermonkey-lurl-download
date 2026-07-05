@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.5.8
+// @version      6.6.0
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1993,6 +1993,10 @@
       const hasQuota = quota.remaining > 0 || quota.remaining === -1;
       const needsPaywall = !hasQuota && !quota.subscription;
 
+      // 帶著腳本身分(svid)導去購買 → 開通後點數直接寫回這個身分（在此工具裡就能用）
+      const svid = RecoveryService.getVisitorId();
+      const buyUrl = `${API_BASE}/pricing?svid=${encodeURIComponent(svid)}`;
+
       const modal = document.createElement('div');
       modal.id = 'lurlhub-recovery-modal';
       modal.innerHTML = `
@@ -2226,7 +2230,7 @@
           <div class="lurlhub-title">${needsPaywall ? '想繼續觀看嗎？' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
             ${needsPaywall
-              ? '本次可用額度已用完。LurlHub 是內容備份與瀏覽輔助站，帳號與額度相關說明可至官方網站了解。'
+              ? '本次可用額度已用完。升級會員後，點數會直接加到你現在使用的這個工具裡，馬上繼續。'
               : '好消息！我們有此內容的備份。<br>點擊下方按鈕即可觀看。'}
           </div>
           <div class="lurlhub-quota" style="margin-bottom:10px;">
@@ -2239,9 +2243,9 @@
           ${needsPaywall ? `
           <div class="lurlhub-subscribe-section">
             <div style="font-size:13px;color:#666;line-height:1.7;margin-bottom:14px;">
-              LurlHub 是一個內容備份與瀏覽輔助站。註冊帳號、登入與額度說明請至官方網站。
+              升級會員，點數直接加進這裡：<b>會員 +100 點</b>／<b>進階 +300 點</b>，每月自動補，立刻繼續修復。
             </div>
-            <a href="${API_BASE}/" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:#3b82f6;color:#fff;padding:12px 26px;border-radius:10px;font-weight:500;">前往 LurlHub 官方網站</a>
+            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:#3b82f6;color:#fff;padding:12px 26px;border-radius:10px;font-weight:500;">升級會員 · 點數加到這裡 →</a>
           </div>
           ` : ''}
           <div class="lurlhub-actions" style="margin-top: 15px;">
