@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.7.0
+// @version      6.8.0
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1531,7 +1531,7 @@
           if (pageStatus === 'passwordFailed') {
             RecoveryService.cleanupPasswordFailedUI();
           }
-          RecoveryService.replaceResource(backup.backupUrl, backup.record.type);
+          RecoveryService.replaceResource(backup.backupUrl, backup.record.type, backup.record.id);
           Utils.showToast('✅ 已自動載入備份', 'success');
           return { handled: true, hasBackup: true };
         }
@@ -1644,7 +1644,7 @@
         RecoveryService.showModal(quota, async () => {
           try {
             const result = await RecoveryService.recover(pageUrl);
-            RecoveryService.replaceResource(result.backupUrl, result.record.type);
+            RecoveryService.replaceResource(result.backupUrl, result.record.type, result.record.id);
             btnContainer.remove(); // 移除按鈕
             if (result.alreadyRecovered) {
               Utils.showToast('✅ 已自動載入備份', 'success');
@@ -1756,7 +1756,7 @@
           try {
             const result = await RecoveryService.recover(pageUrl);
             RecoveryService.cleanupPasswordFailedUI();
-            RecoveryService.replaceResource(result.backupUrl, result.record.type);
+            RecoveryService.replaceResource(result.backupUrl, result.record.type, result.record.id);
             Utils.showToast('✅ 觀看成功！', 'success');
           } catch (err) {
             if (err.error === 'quota_exhausted') {
@@ -2406,17 +2406,23 @@
     },
 
     // 替換資源（過期頁面復原，支援影片和圖片）
-    replaceResource: (backupUrl, type) => {
+    replaceResource: (backupUrl, type, recordId) => {
       const fullUrl = backupUrl.startsWith('http') ? backupUrl : API_BASE.replace('/lurl', '') + backupUrl;
+      const viewUrl = recordId ? (API_BASE + '/view/' + recordId) : fullUrl;
 
       // 建立新元素
       let newElement = null;
       if (type === 'video') {
-        newElement = document.createElement('video');
-        newElement.src = fullUrl;
-        newElement.controls = true;
-        newElement.autoplay = true;
-        newElement.style.cssText = 'max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;';
+        // 影片一律導去站內觀看：站內 HLS(H.264)+ 會員授權都處理好，HEVC 也能出畫面；
+        // 原頁硬播原始檔會撞「付費牆 token」與「HEVC 沒畫面」兩個問題。
+        newElement = document.createElement('a');
+        newElement.href = viewUrl;
+        newElement.target = '_blank';
+        newElement.rel = 'noopener';
+        newElement.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;max-width:100%;min-height:180px;padding:30px 20px;margin:0 auto;background:linear-gradient(135deg,#1a1a2e,#0f0f1a);border:1px solid #333;border-radius:14px;text-decoration:none;color:#fff;text-align:center;cursor:pointer;';
+        newElement.innerHTML = '<div style="font-size:44px;line-height:1;">▶</div>'
+          + '<div style="font-size:16px;font-weight:700;">在 LurlHub 觀看完整影片</div>'
+          + '<div style="font-size:12px;color:#aaa;">點擊前往備份站 · 畫質更好、支援所有格式</div>';
       } else {
         newElement = document.createElement('img');
         newElement.src = fullUrl;
@@ -2446,8 +2452,8 @@
         }
       }
 
-      // 播放影片
-      if (type === 'video' && newElement) {
+      // 播放影片（僅當真的是 video 元素；B案影片已改成導站連結，不在原頁播）
+      if (newElement && newElement.tagName === 'VIDEO') {
         newElement.play().catch(() => {});
       }
 
@@ -2480,7 +2486,7 @@
         if (backup.hasBackup) {
           // 已修復過 → 直接顯示
           if (backup.alreadyRecovered) {
-            RecoveryService.replaceResource(backup.backupUrl, backup.record.type);
+            RecoveryService.replaceResource(backup.backupUrl, backup.record.type, backup.record.id);
             Utils.showToast('✅ 已自動載入備份', 'success');
             return;
           }
@@ -2489,7 +2495,7 @@
           RecoveryService.showModal({ ...backup.quota, subscription: backup.subscription }, async () => {
             try {
               const result = await RecoveryService.recover(pageUrl);
-              RecoveryService.replaceResource(result.backupUrl, result.record.type);
+              RecoveryService.replaceResource(result.backupUrl, result.record.type, result.record.id);
               Utils.showToast('✅ 修復成功！', 'success');
             } catch (err) {
               if (err.error === 'quota_exhausted') {
