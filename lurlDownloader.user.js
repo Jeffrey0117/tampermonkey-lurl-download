@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.8.0
+// @version      6.8.1
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -2408,7 +2408,8 @@
     // 替換資源（過期頁面復原，支援影片和圖片）
     replaceResource: (backupUrl, type, recordId) => {
       const fullUrl = backupUrl.startsWith('http') ? backupUrl : API_BASE.replace('/lurl', '') + backupUrl;
-      const viewUrl = recordId ? (API_BASE + '/view/' + recordId) : fullUrl;
+      // 帶腳本身分(svid)導站：日後在站上買單，點數會回流到這個腳本身分（命門那條線不斷）
+      const viewUrl = recordId ? (API_BASE + '/view/' + recordId + '?svid=' + encodeURIComponent(RecoveryService.getVisitorId())) : fullUrl;
 
       // 建立新元素
       let newElement = null;
