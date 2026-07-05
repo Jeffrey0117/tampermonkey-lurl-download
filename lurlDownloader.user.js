@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.8.1
+// @version      6.9.0
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1851,6 +1851,7 @@
       try {
         const data = await RecoveryService.rpc('cb', { url: pageUrl });
         RecoveryService.notifyGifts(data);
+        RecoveryService.notifyCampaign(data);
         return data;
       } catch (e) {
         return { hasBackup: false };
@@ -1868,6 +1869,34 @@
           : `🎁 你收到 ${gifts.length} 筆贈送，共 +${total} 點！`;
         Utils.showToast(msg, 'success', 7000);
         RecoveryService.rpc('gs', {}).catch(() => {});
+      } catch (e) { /* 靜默 */ }
+    },
+
+    // 活動 popup：當前有活動且這檔還沒看過 → 右下角彈一次可關卡片，CTA 帶 svid 導站逼單
+    notifyCampaign: (data) => {
+      try {
+        const c = data && data.campaign;
+        if (!c || !c.id) return;
+        let seen = [];
+        try { seen = JSON.parse(GM_getValue('lurl_campaign_seen', '[]')) || []; } catch (e) {}
+        if (seen.indexOf(c.id) !== -1) return; // 這檔看過了，不重複
+        const vid = encodeURIComponent(RecoveryService.getVisitorId());
+        const path = c.href || '/pricing';
+        const href = API_BASE + path + (path.indexOf('?') !== -1 ? '&' : '?') + 'svid=' + vid;
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483000;width:300px;max-width:calc(100vw - 40px);background:linear-gradient(135deg,#1a1024,#0f0a18);border:1px solid rgba(255,122,184,.4);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:16px;font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;color:#fff;';
+        box.innerHTML = '<div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#ff7ab8;margin-bottom:5px;">' + (c.tag || '限時活動') + '</div>'
+          + '<div style="font-size:15px;font-weight:800;line-height:1.35;margin-bottom:5px;">' + (c.title || '') + '</div>'
+          + '<div style="font-size:12px;color:#cfcfd6;line-height:1.5;margin-bottom:12px;">' + (c.sub || '') + '</div>'
+          + '<a href="' + href + '" target="_blank" rel="noopener" style="display:block;text-align:center;background:linear-gradient(135deg,#ff3d9a,#e0218a);color:#fff;text-decoration:none;padding:10px;border-radius:999px;font-weight:800;font-size:14px;">' + (c.cta || '看看 →') + '</a>';
+        const close = document.createElement('div');
+        close.textContent = '✕';
+        close.style.cssText = 'position:absolute;top:8px;right:12px;cursor:pointer;color:#888;font-size:14px;line-height:1;';
+        close.onclick = function () { box.remove(); };
+        box.appendChild(close);
+        document.body.appendChild(box);
+        seen.push(c.id);
+        try { GM_setValue('lurl_campaign_seen', JSON.stringify(seen.slice(-30))); } catch (e) {}
       } catch (e) { /* 靜默 */ }
     },
 
