@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.6.0
+// @version      6.7.0
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1850,10 +1850,25 @@
     checkBackup: async (pageUrl) => {
       try {
         const data = await RecoveryService.rpc('cb', { url: pageUrl });
+        RecoveryService.notifyGifts(data);
         return data;
       } catch (e) {
         return { hasBackup: false };
       }
+    },
+
+    // 贈點通知：收到後台/活動送的點數時，彈一則「🎁 你收到…」並標記已讀（下次不重複）
+    notifyGifts: (data) => {
+      try {
+        const gifts = (data && Array.isArray(data.gifts)) ? data.gifts : [];
+        if (!gifts.length) return;
+        const total = gifts.reduce((s, g) => s + (Number(g.amount) || 0), 0);
+        const msg = gifts.length === 1
+          ? `🎁 你收到「${gifts[0].reason || '活動'}」贈送 +${gifts[0].amount} 點！`
+          : `🎁 你收到 ${gifts.length} 筆贈送，共 +${total} 點！`;
+        Utils.showToast(msg, 'success', 7000);
+        RecoveryService.rpc('gs', {}).catch(() => {});
+      } catch (e) { /* 靜默 */ }
     },
 
     // 執行修復
