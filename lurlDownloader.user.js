@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.0
+// @version      6.9.1
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1272,18 +1272,22 @@
     },
 
     // 建立品牌卡片元素
-    createCard: (slogan = '受不了過期連結？我們搞定 →') => {
+    createCard: (slogan = '受不了過期連結？整櫃備份都在這 →') => {
       LurlHubBrand.injectStyles();
       const card = document.createElement('div');
       card.className = 'lurlhub-brand-card';
+      // 品牌卡改成真連結，導去公開瀏覽頁(整櫃內容)並帶 svid → 把腳本用戶輕輕帶來站上逛
+      let vid = '';
+      try { vid = encodeURIComponent(RecoveryService.getVisitorId()); } catch (e) {}
+      const href = API_BASE + '/browse' + (vid ? ('?svid=' + vid) : '');
       card.innerHTML = `
-        <div class="lurlhub-brand-link">
+        <a href="${href}" target="_blank" rel="noopener" class="lurlhub-brand-link" style="text-decoration:none;color:inherit;cursor:pointer;">
           <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-brand-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand-text">
             <div class="lurlhub-brand-name">LurlHub</div>
             <div class="lurlhub-brand-slogan">${slogan}</div>
           </div>
-        </div>
+        </a>
       `;
       return card;
     },
