@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.1
+// @version      6.9.3
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -2041,9 +2041,9 @@
       const hasQuota = quota.remaining > 0 || quota.remaining === -1;
       const needsPaywall = !hasQuota && !quota.subscription;
 
-      // 帶著腳本身分(svid)導去購買 → 開通後點數直接寫回這個身分（在此工具裡就能用）
+      // 帶著腳本身分(svid)導去「補點包」→ 綁卡首刷 99 → 開通後點數直接寫回這個身分（在此工具裡就能用）
       const svid = RecoveryService.getVisitorId();
-      const buyUrl = `${API_BASE}/pricing?svid=${encodeURIComponent(svid)}`;
+      const buyUrl = `${API_BASE}/buy-points?svid=${encodeURIComponent(svid)}`;
 
       const modal = document.createElement('div');
       modal.id = 'lurlhub-recovery-modal';
@@ -2278,7 +2278,7 @@
           <div class="lurlhub-title">${needsPaywall ? '想繼續觀看嗎？' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
             ${needsPaywall
-              ? '本次可用額度已用完。升級會員後，點數會直接加到你現在使用的這個工具裡，馬上繼續。'
+              ? '本次額度用完了。補點包 NT$99 · 30 點，點數直接加到你現在用的這個工具、馬上繼續。綁卡後下次一鍵補、免重填卡。'
               : '好消息！我們有此內容的備份。<br>點擊下方按鈕即可觀看。'}
           </div>
           <div class="lurlhub-quota" style="margin-bottom:10px;">
@@ -2291,9 +2291,9 @@
           ${needsPaywall ? `
           <div class="lurlhub-subscribe-section">
             <div style="font-size:13px;color:#666;line-height:1.7;margin-bottom:14px;">
-              升級會員，點數直接加進這裡：<b>會員 +100 點</b>／<b>進階 +300 點</b>，每月自動補，立刻繼續修復。
+              點數直接加到你現在用的這個工具，一次修復扣 1 點，補一次用很久。<br><span style="color:#999;font-size:12px;">已經是會員？在「訂閱管理」綁定你的會員 Email，即可直接啟用權益。</span>
             </div>
-            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:#3b82f6;color:#fff;padding:12px 26px;border-radius:10px;font-weight:500;">升級會員 · 點數加到這裡 →</a>
+            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:#3b82f6;color:#fff;padding:12px 26px;border-radius:10px;font-weight:500;">NT$99 補點 · 馬上繼續 →</a>
           </div>
           ` : ''}
           <div class="lurlhub-actions" style="margin-top: 15px;">
