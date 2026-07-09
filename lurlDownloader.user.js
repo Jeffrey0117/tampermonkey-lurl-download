@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.3
+// @version      6.9.4
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -2275,10 +2275,10 @@
         <div class="lurlhub-modal-content">
           <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand">LurlHub</div>
-          <div class="lurlhub-title">${needsPaywall ? '想繼續觀看嗎？' : '原始資源已過期'}</div>
+          <div class="lurlhub-title">${needsPaywall ? '這部，原站已經沒了' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
             ${needsPaywall
-              ? '本次額度用完了。補點包 NT$99 · 30 點，點數直接加到你現在用的這個工具、馬上繼續。綁卡後下次一鍵補、免重填卡。'
+              ? '你想看的這部，<b style="color:#ff7ab8">原始頁面已經被刪了</b> —— 只有我們還留著完整備份。你的免費修復次數用完了。'
               : '好消息！我們有此內容的備份。<br>點擊下方按鈕即可觀看。'}
           </div>
           <div class="lurlhub-quota" style="margin-bottom:10px;">
@@ -2290,10 +2290,11 @@
           </div>
           ${needsPaywall ? `
           <div class="lurlhub-subscribe-section">
-            <div style="font-size:13px;color:#666;line-height:1.7;margin-bottom:14px;">
-              點數直接加到你現在用的這個工具，一次修復扣 1 點，補一次用很久。<br><span style="color:#999;font-size:12px;">已經是會員？在「訂閱管理」綁定你的會員 Email，即可直接啟用權益。</span>
-            </div>
-            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:#3b82f6;color:#fff;padding:12px 26px;border-radius:10px;font-weight:500;">NT$99 補點 · 馬上繼續 →</a>
+            <div style="font-size:15px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:3px;">補點包 NT$99 ＝ 解鎖這部 ＋ 再 29 部</div>
+            <div style="font-size:12px;color:#999;margin-bottom:14px;">一部才 3.3 元 · 綁卡後下次一鍵補、免重填卡</div>
+            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;padding:14px 32px;border-radius:10px;font-weight:800;font-size:15px;box-shadow:0 8px 20px rgba(224,33,138,.4);">99 元解鎖 · 馬上看 →</a>
+            <div style="font-size:11px;color:#888;margin-top:11px;">🔒 PayUni 加密結帳，安全付款</div>
+            <div style="font-size:11px;color:#777;margin-top:7px;">已是會員？點「訂閱管理」綁定 Email 啟用</div>
           </div>
           ` : ''}
           <div class="lurlhub-actions" style="margin-top: 15px;">
