@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.4
+// @version      6.9.5
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -837,13 +837,15 @@
         const uploadChunk = async (i) => {
           const start = i * CONFIG.CHUNK_SIZE;
           const end = Math.min(start + CONFIG.CHUNK_SIZE, size);
+          // 傳 Blob + binary:true —— 傳 ArrayBuffer 會被腳本管理器 String() 成
+          // "[object ArrayBuffer]" 文字，整包影片變 20B×N 的壞檔（2026-07-10 實案）
           const chunk = blob.slice(start, end);
-          const arrayBuffer = await chunk.arrayBuffer();
 
           return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
               method: "POST",
               url: UPLOAD_URL,
+              binary: true,
               headers: {
                 "Content-Type": "application/octet-stream",
                 "X-Client-Token": CLIENT_TOKEN,
@@ -851,7 +853,7 @@
                 "X-Chunk-Index": String(i),
                 "X-Total-Chunks": String(totalChunks),
               },
-              data: arrayBuffer,
+              data: chunk,
               timeout: 60000,
               onload: (uploadRes) => {
                 if (uploadRes.status === 200) {
