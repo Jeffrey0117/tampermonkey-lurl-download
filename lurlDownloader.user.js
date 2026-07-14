@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.5
+// @version      6.9.6
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -2277,11 +2277,11 @@
         <div class="lurlhub-modal-content">
           <img src="${API_BASE}/files/LOGO.png?v=2" class="lurlhub-logo" onerror="this.style.display='none'">
           <div class="lurlhub-brand">LurlHub</div>
-          <div class="lurlhub-title">${needsPaywall ? '這部，原站已經沒了' : '原始資源已過期'}</div>
+          <div class="lurlhub-title">${needsPaywall ? '這部過期了' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
             ${needsPaywall
-              ? '你想看的這部，<b style="color:#ff7ab8">原始頁面已經被刪了</b> —— 只有我們還留著完整備份。你的免費修復次數用完了。'
-              : '好消息！我們有此內容的備份。<br>點擊下方按鈕即可觀看。'}
+              ? '你想看的這部<b style="color:#ff7ab8">過期了</b> —— 幫你還原，馬上就能看。你的免費還原次數用完了。'
+              : '過期資源的還原，點下方按鈕就能看。'}
           </div>
           <div class="lurlhub-quota" style="margin-bottom:10px;">
             ${quota.subscription
@@ -2292,9 +2292,9 @@
           </div>
           ${needsPaywall ? `
           <div class="lurlhub-subscribe-section">
-            <div style="font-size:15px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:3px;">補點包 NT$99 ＝ 解鎖這部 ＋ 再 29 部</div>
-            <div style="font-size:12px;color:#999;margin-bottom:14px;">一部才 3.3 元 · 綁卡後下次一鍵補、免重填卡</div>
-            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;padding:14px 32px;border-radius:10px;font-weight:800;font-size:15px;box-shadow:0 8px 20px rgba(224,33,138,.4);">99 元解鎖 · 馬上看 →</a>
+            <div style="font-size:15px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:3px;">這部＋今晚想看的，NT$99 一次幫你還原</div>
+            <div style="font-size:12px;color:#999;margin-bottom:14px;">想看的都在，點開就有 —— 今晚不用再一部一部找</div>
+            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;padding:14px 32px;border-radius:10px;font-weight:800;font-size:15px;box-shadow:0 8px 20px rgba(224,33,138,.4);">現在就看 →</a>
             <div style="font-size:11px;color:#888;margin-top:11px;">🔒 PayUni 加密結帳，安全付款</div>
             <div style="font-size:11px;color:#777;margin-top:7px;">已是會員？點「訂閱管理」綁定 Email 啟用</div>
           </div>
@@ -2303,7 +2303,7 @@
             <button class="lurlhub-btn lurlhub-btn-cancel" id="lurlhub-cancel">取消</button>
             ${hasQuota || quota.subscription ? `
             <button class="lurlhub-btn lurlhub-btn-confirm" id="lurlhub-confirm">
-              使用修復（消耗 1 點）
+              看這部 →
             </button>
             ` : ''}
           </div>
