@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.6
+// @version      6.9.7
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -2046,6 +2046,7 @@
       // 帶著腳本身分(svid)導去「補點包」→ 綁卡首刷 99 → 開通後點數直接寫回這個身分（在此工具裡就能用）
       const svid = RecoveryService.getVisitorId();
       const buyUrl = `${API_BASE}/buy-points?svid=${encodeURIComponent(svid)}`;
+      const subUrl = `${API_BASE}/join?svid=${encodeURIComponent(svid)}`;   // 老司機那條走 /join(看方案再結帳)
 
       const modal = document.createElement('div');
       modal.id = 'lurlhub-recovery-modal';
@@ -2292,9 +2293,9 @@
           </div>
           ${needsPaywall ? `
           <div class="lurlhub-subscribe-section">
-            <div style="font-size:15px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:3px;">這部＋今晚想看的，NT$99 一次幫你還原</div>
-            <div style="font-size:12px;color:#999;margin-bottom:14px;">想看的都在，點開就有 —— 今晚不用再一部一部找</div>
-            <a href="${buyUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:inline-block;text-decoration:none;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;padding:14px 32px;border-radius:10px;font-weight:800;font-size:15px;box-shadow:0 8px 20px rgba(224,33,138,.4);">現在就看 →</a>
+            <div style="font-size:14px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:12px;">這部過期了 —— 選個方式，馬上還原 👇</div>
+            <a href="${subUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:block;text-decoration:none;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;padding:13px 18px;border-radius:11px;font-weight:800;font-size:15px;box-shadow:0 8px 20px rgba(224,33,138,.4);margin-bottom:9px;">🚗 老司機 · 想看什麼點什麼<div style="font-size:11px;font-weight:600;opacity:.92;margin-top:2px;">暢看不用再數，一次爽到底 →</div></a>
+            <a href="${buyUrl}" target="_blank" rel="noopener" style="display:block;text-decoration:none;background:transparent;color:#ffb3d4;padding:11px 18px;border-radius:11px;font-weight:700;font-size:14px;border:1px solid rgba(255,122,184,.5);">🪙 NT$99 · 只想先補一批<div style="font-size:11px;font-weight:500;opacity:.85;margin-top:2px;">今晚想看的，一次幫你還原 →</div></a>
             <div style="font-size:11px;color:#888;margin-top:11px;">🔒 PayUni 加密結帳，安全付款</div>
             <div style="font-size:11px;color:#777;margin-top:7px;">已是會員？點「訂閱管理」綁定 Email 啟用</div>
           </div>
