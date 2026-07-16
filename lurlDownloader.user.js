@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.7
+// @version      6.9.8
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -2011,6 +2011,15 @@
 
     getEmail: () => GM_getValue('lurlhub_email', null),
     setEmail: (email) => GM_setValue('lurlhub_email', email),
+    getNick: () => GM_getValue('lurlhub_nick', null),
+    isMember: () => !!GM_getValue('lurlhub_email', null),
+    setMember: (email, nick) => { GM_setValue('lurlhub_email', email); GM_setValue('lurlhub_nick', nick || (email || '').split('@')[0]); },
+    // 免密碼註冊/登入 + 綁 svid（常駐徽章用）：驗證碼過站端 rg → 建會員、綁 email、送額度
+    register: async (email, code) => {
+      const data = await RecoveryService.rpc('rg', { email, code });
+      if (data && data.ok) RecoveryService.setMember(email, data.nickname);
+      return data;
+    },
 
     sendVerification: async (email) => {
       return RecoveryService.rpc('sv', { email });
@@ -3669,8 +3678,72 @@
     },
   };
 
+  // ==================== 會員常駐徽章（捕獲：把匿名腳本仔逼成有 email 的會員）====================
+  // 每頁左下角一顆：未登入＝「🔑 註冊·領免費額度」→ 免密碼 email 驗證碼 → 建會員+綁 svid；已登入＝「✓ 名字」。
+  const MemberBadge = {
+    init() {
+      try {
+        if (document.getElementById('lurlhub-mbadge') || !document.body) return;
+        const wrap = document.createElement('div');
+        wrap.id = 'lurlhub-mbadge';
+        wrap.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:2147483000;font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;';
+        document.body.appendChild(wrap);
+        this.render(wrap);
+      } catch (e) { console.warn('[lurl] mbadge init fail', e); }
+    },
+    render(wrap) {
+      const p = wrap.querySelector('.lm-panel'); if (p) p.remove();
+      if (RecoveryService.isMember()) {
+        const nick = RecoveryService.getNick() || '會員';
+        wrap.innerHTML = '<div style="display:flex;align-items:center;gap:6px;background:rgba(20,16,26,.92);border:1px solid rgba(255,122,184,.4);color:#ffd9ec;padding:7px 12px;border-radius:999px;font-size:12px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.4);">✓ ' + nick + '</div>';
+      } else {
+        wrap.innerHTML = '<button id="lurlhub-mbadge-btn" style="background:linear-gradient(135deg,#e0218a,#ff5aa8);border:none;color:#fff;padding:8px 14px;border-radius:999px;font-size:12px;font-weight:800;box-shadow:0 8px 20px rgba(224,33,138,.4);cursor:pointer;">🔑 註冊 · 領免費額度</button>';
+        const btn = wrap.querySelector('#lurlhub-mbadge-btn');
+        if (btn) btn.onclick = () => this.openForm(wrap);
+      }
+    },
+    openForm(wrap) {
+      if (wrap.querySelector('.lm-panel')) return;
+      const panel = document.createElement('div');
+      panel.className = 'lm-panel';
+      panel.style.cssText = 'position:absolute;left:0;bottom:44px;width:250px;background:#1a1220;border:1px solid #3a2740;border-radius:14px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);color:#eee;';
+      panel.innerHTML =
+        '<div style="font-weight:800;font-size:14px;color:#fff;margin-bottom:3px;">領你的免費額度 🎁</div>' +
+        '<div style="font-size:11px;color:#aaa;margin-bottom:12px;">填 email 拿驗證碼，額度存雲端、跨裝置同步</div>' +
+        '<input id="lm-email" type="email" placeholder="你的 Email" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid #3a2740;background:#0f0a12;color:#fff;font-size:13px;margin-bottom:8px;">' +
+        '<div id="lm-code-row" style="display:none;"><input id="lm-code" type="text" inputmode="numeric" maxlength="6" placeholder="6 位驗證碼" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid #3a2740;background:#0f0a12;color:#fff;font-size:13px;margin-bottom:8px;letter-spacing:4px;text-align:center;"></div>' +
+        '<button id="lm-go" style="width:100%;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;border:none;border-radius:9px;padding:10px;font-size:13px;font-weight:800;cursor:pointer;">發送驗證碼</button>' +
+        '<div id="lm-msg" style="font-size:11px;margin-top:8px;min-height:14px;text-align:center;"></div>';
+      wrap.appendChild(panel);
+      const q = (s) => panel.querySelector(s);
+      const emailEl = q('#lm-email'), codeRow = q('#lm-code-row'), codeEl = q('#lm-code'), go = q('#lm-go'), msg = q('#lm-msg');
+      let stage = 'email';
+      go.onclick = async () => {
+        const email = (emailEl.value || '').trim();
+        if (stage === 'email') {
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.style.color = '#ff8080'; msg.textContent = '請填有效 Email'; return; }
+          go.disabled = true; go.textContent = '發送中…'; msg.textContent = '';
+          const r = await RecoveryService.sendVerification(email);
+          go.disabled = false;
+          if (r && r.ok) { stage = 'code'; codeRow.style.display = 'block'; go.textContent = '完成 · 領額度'; msg.style.color = '#5fe0a0'; msg.textContent = '驗證碼已寄出，查收信箱（含垃圾信）'; codeEl.focus(); }
+          else { go.textContent = '發送驗證碼'; msg.style.color = '#ff8080'; msg.textContent = (r && r.message) || '寄送失敗'; }
+        } else {
+          const code = (codeEl.value || '').trim();
+          if (!code) { msg.style.color = '#ff8080'; msg.textContent = '請填驗證碼'; return; }
+          go.disabled = true; go.textContent = '處理中…'; msg.textContent = '';
+          const r = await RecoveryService.register(email, code);
+          if (r && r.ok) { msg.style.color = '#5fe0a0'; msg.textContent = '✓ 完成！送你 ' + (r.bonus || 0) + ' 部額度'; setTimeout(() => { panel.remove(); MemberBadge.render(wrap); }, 1200); }
+          else { go.disabled = false; go.textContent = '完成 · 領額度'; msg.style.color = '#ff8080'; msg.textContent = (r && r.message) || '驗證失敗'; }
+        }
+      };
+      emailEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && stage === 'email') go.click(); });
+      codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+    },
+  };
+
   $(document).ready(() => {
     Main.init();
+    try { MemberBadge.init(); } catch (e) {}
   });
 
   /**
