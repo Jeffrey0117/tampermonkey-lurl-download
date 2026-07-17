@@ -2307,9 +2307,9 @@
           <div class="lurlhub-title">${needsPaywall ? '這部過期了' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
             ${needRegister
-              ? '你想看的這部<b style="color:#ff7ab8">過期了</b> —— 幫你還原，馬上就能看。'
+              ? '你想看的這部<b style="color:#ff7ab8">過期了</b>，幫你還原，馬上就能看。'
               : needsPaywall
-              ? '你想看的這部<b style="color:#ff7ab8">過期了</b> —— 幫你還原，馬上就能看。你的免費還原次數用完了。'
+              ? '你想看的這部<b style="color:#ff7ab8">過期了</b>，幫你還原馬上就能看，你的免費還原次數用完了。'
               : '過期資源的還原，點下方按鈕就能看。'}
           </div>
           <div class="lurlhub-quota" style="margin-bottom:10px;">
@@ -2325,7 +2325,7 @@
               ${regLocked > 0 ? `🎁 你的 ${regLocked} 部免費額度已保留` : `🎁 註冊就送 ${regBonus} 部免費額度`}
             </div>
             <div style="font-size:12px;color:#c9c9d4;line-height:1.6;margin-bottom:12px;">
-              ${regLocked > 0 ? `30 秒領回（免密碼），再送 ${regBonus} 部 —— 領完馬上看這部` : `免密碼、30 秒完成，額度跨裝置同步 —— 領完馬上看這部`}
+              ${regLocked > 0 ? `30 秒領回（免密碼），再送 ${regBonus} 部，領完馬上看這部` : `免密碼、30 秒完成，額度跨裝置同步，領完馬上看這部`}
             </div>
             <input id="lurlhub-reg-email" type="email" placeholder="你的 Email" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid rgba(255,122,184,.35);background:#0f0a12;color:#fff;font-size:13px;margin-bottom:8px;">
             <div id="lurlhub-reg-code-row" style="display:none;"><input id="lurlhub-reg-code" type="text" inputmode="numeric" maxlength="6" placeholder="6 位驗證碼" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid rgba(255,122,184,.35);background:#0f0a12;color:#fff;font-size:14px;margin-bottom:8px;letter-spacing:4px;text-align:center;"></div>
@@ -2336,12 +2336,12 @@
           ` : ''}
           ${needsPaywall ? `
           <div class="lurlhub-subscribe-section" id="lurlhub-pay-section" ${needRegister ? 'style="display:none;"' : ''}>
-            <div style="font-size:14px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:12px;">這部過期了 —— 選個方式，馬上還原 👇</div>
+            <div style="font-size:14px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:12px;">這部過期了，選個方式馬上還原 👇</div>
             <a href="${subUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:block;text-decoration:none;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;padding:13px 18px;border-radius:11px;font-weight:800;font-size:15px;box-shadow:0 8px 20px rgba(224,33,138,.4);margin-bottom:9px;">🚗 老司機 · 想看什麼點什麼<div style="font-size:11px;font-weight:600;opacity:.92;margin-top:2px;">暢看不用再數，一次爽到底 →</div></a>
             <a href="${buyUrl}" target="_blank" rel="noopener" style="display:block;text-decoration:none;background:transparent;color:#ffb3d4;padding:11px 18px;border-radius:11px;font-weight:700;font-size:14px;border:1px solid rgba(255,122,184,.5);">🪙 NT$99 · 只想先補一批<div style="font-size:11px;font-weight:500;opacity:.85;margin-top:2px;">${fb ? `首購加碼 30 → ${30 + fb.bonus} 點，一次幫你還原 →` : '今晚想看的，一次幫你還原 →'}</div></a>
             ${fb ? `<div id="lurlhub-fb-cd" style="font-size:11px;color:#ff7ab8;font-weight:700;margin-top:9px;">🎁 首購加碼倒數 --:--:--</div>` : ''}
             <div style="font-size:11px;color:#888;margin-top:11px;">🔒 PayUni 加密結帳，安全付款</div>
-            <div style="font-size:11px;color:#777;margin-top:7px;">已是會員？點「訂閱管理」綁定 Email 啟用</div>
+            <div style="font-size:11px;color:#777;margin-top:7px;">已訂閱卻顯示過期？重新整理頁面即可同步，或用同一個 Email 到官網登入</div>
           </div>
           ` : ''}
           <div class="lurlhub-actions" style="margin-top: 15px;">
