@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.8
+// @version      6.9.9
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -1658,7 +1658,9 @@
               Utils.showToast('✅ 修復成功！', 'success');
             }
           } catch (err) {
-            if (err.error === 'quota_exhausted') {
+            if (err.error === 'need_register') {
+              Utils.showToast(err.message || '🔑 先註冊領回免費額度（免密碼、30 秒）', 'error');
+            } else if (err.error === 'quota_exhausted') {
               Utils.showToast('❌ 需要訂閱才能使用', 'error');
             } else {
               Utils.showToast('❌ 修復失敗', 'error');
@@ -1765,7 +1767,9 @@
             RecoveryService.replaceResource(result.backupUrl, result.record.type, result.record.id);
             Utils.showToast('✅ 觀看成功！', 'success');
           } catch (err) {
-            if (err.error === 'quota_exhausted') {
+            if (err.error === 'need_register') {
+              Utils.showToast(err.message || '🔑 先註冊領回免費額度（免密碼、30 秒）', 'error');
+            } else if (err.error === 'quota_exhausted') {
               Utils.showToast('❌ 需要訂閱才能使用', 'error');
             } else {
               Utils.showToast('❌ 載入失敗', 'error');
@@ -1856,6 +1860,13 @@
     checkBackup: async (pageUrl) => {
       try {
         const data = await RecoveryService.rpc('cb', { url: pageUrl });
+        // 硬牆/首購加碼欄位塞進 quota——既有呼叫端都是 {...fresh.quota} spread，直接帶進 showModal
+        if (data && data.quota) {
+          data.quota.needRegister = data.needRegister || false;
+          data.quota.locked = data.locked || 0;
+          data.quota.regBonus = data.regBonus || 3;
+          data.quota.firstBuy = data.firstBuy || null;
+        }
         RecoveryService.notifyGifts(data);
         RecoveryService.notifyCampaign(data);
         return data;
@@ -2051,6 +2062,12 @@
       // -1 = 無限（VIP/premium），視為有額度
       const hasQuota = quota.remaining > 0 || quota.remaining === -1;
       const needsPaywall = !hasQuota && !quota.subscription;
+      // 硬牆：匿名（未綁 email）撞牆 → 先出「註冊領回」，付費選項退居 fallback 連結
+      const needRegister = needsPaywall && !!quota.needRegister;
+      const regLocked = quota.locked || 0;
+      const regBonus = quota.regBonus || 3;
+      // 註冊後 48h 首購加碼（server 給 deadline，過期自然不顯示）
+      const fb = (quota.firstBuy && quota.firstBuy.deadline > Date.now()) ? quota.firstBuy : null;
 
       // 帶著腳本身分(svid)導去「補點包」→ 綁卡首刷 99 → 開通後點數直接寫回這個身分（在此工具裡就能用）
       const svid = RecoveryService.getVisitorId();
@@ -2289,7 +2306,9 @@
           <div class="lurlhub-brand">LurlHub</div>
           <div class="lurlhub-title">${needsPaywall ? '這部過期了' : '原始資源已過期'}</div>
           <div class="lurlhub-desc">
-            ${needsPaywall
+            ${needRegister
+              ? '你想看的這部<b style="color:#ff7ab8">過期了</b> —— 幫你還原，馬上就能看。'
+              : needsPaywall
               ? '你想看的這部<b style="color:#ff7ab8">過期了</b> —— 幫你還原，馬上就能看。你的免費還原次數用完了。'
               : '過期資源的還原，點下方按鈕就能看。'}
           </div>
@@ -2300,11 +2319,27 @@
               : `<div style="font-size:12px;color:#999;">剩餘 ${quota.remaining === -1 ? '無限' : quota.remaining} / ${quota.total || 3} 次</div>`
             }
           </div>
+          ${needRegister ? `
+          <div class="lurlhub-subscribe-section" id="lurlhub-reg-section">
+            <div style="font-size:14px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:4px;">
+              ${regLocked > 0 ? `🎁 你的 ${regLocked} 部免費額度已保留` : `🎁 註冊就送 ${regBonus} 部免費額度`}
+            </div>
+            <div style="font-size:12px;color:#c9c9d4;line-height:1.6;margin-bottom:12px;">
+              ${regLocked > 0 ? `30 秒領回（免密碼），再送 ${regBonus} 部 —— 領完馬上看這部` : `免密碼、30 秒完成，額度跨裝置同步 —— 領完馬上看這部`}
+            </div>
+            <input id="lurlhub-reg-email" type="email" placeholder="你的 Email" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid rgba(255,122,184,.35);background:#0f0a12;color:#fff;font-size:13px;margin-bottom:8px;">
+            <div id="lurlhub-reg-code-row" style="display:none;"><input id="lurlhub-reg-code" type="text" inputmode="numeric" maxlength="6" placeholder="6 位驗證碼" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid rgba(255,122,184,.35);background:#0f0a12;color:#fff;font-size:14px;margin-bottom:8px;letter-spacing:4px;text-align:center;"></div>
+            <button id="lurlhub-reg-go" style="width:100%;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 8px 20px rgba(224,33,138,.4);">發送驗證碼</button>
+            <div id="lurlhub-reg-msg" style="font-size:11px;margin-top:8px;min-height:14px;"></div>
+            <div style="font-size:11px;color:#777;margin-top:7px;">不想註冊？<a id="lurlhub-reg-skip" style="color:#ffb3d4;cursor:pointer;text-decoration:underline;">看付費方案</a></div>
+          </div>
+          ` : ''}
           ${needsPaywall ? `
-          <div class="lurlhub-subscribe-section">
+          <div class="lurlhub-subscribe-section" id="lurlhub-pay-section" ${needRegister ? 'style="display:none;"' : ''}>
             <div style="font-size:14px;color:#fff;font-weight:800;line-height:1.5;margin-bottom:12px;">這部過期了 —— 選個方式，馬上還原 👇</div>
             <a href="${subUrl}" target="_blank" rel="noopener" class="plan-btn" style="display:block;text-decoration:none;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;padding:13px 18px;border-radius:11px;font-weight:800;font-size:15px;box-shadow:0 8px 20px rgba(224,33,138,.4);margin-bottom:9px;">🚗 老司機 · 想看什麼點什麼<div style="font-size:11px;font-weight:600;opacity:.92;margin-top:2px;">暢看不用再數，一次爽到底 →</div></a>
-            <a href="${buyUrl}" target="_blank" rel="noopener" style="display:block;text-decoration:none;background:transparent;color:#ffb3d4;padding:11px 18px;border-radius:11px;font-weight:700;font-size:14px;border:1px solid rgba(255,122,184,.5);">🪙 NT$99 · 只想先補一批<div style="font-size:11px;font-weight:500;opacity:.85;margin-top:2px;">今晚想看的，一次幫你還原 →</div></a>
+            <a href="${buyUrl}" target="_blank" rel="noopener" style="display:block;text-decoration:none;background:transparent;color:#ffb3d4;padding:11px 18px;border-radius:11px;font-weight:700;font-size:14px;border:1px solid rgba(255,122,184,.5);">🪙 NT$99 · 只想先補一批<div style="font-size:11px;font-weight:500;opacity:.85;margin-top:2px;">${fb ? `首購加碼 30 → ${30 + fb.bonus} 點，一次幫你還原 →` : '今晚想看的，一次幫你還原 →'}</div></a>
+            ${fb ? `<div id="lurlhub-fb-cd" style="font-size:11px;color:#ff7ab8;font-weight:700;margin-top:9px;">🎁 首購加碼倒數 --:--:--</div>` : ''}
             <div style="font-size:11px;color:#888;margin-top:11px;">🔒 PayUni 加密結帳，安全付款</div>
             <div style="font-size:11px;color:#777;margin-top:7px;">已是會員？點「訂閱管理」綁定 Email 啟用</div>
           </div>
@@ -2321,6 +2356,58 @@
       `;
 
       document.body.appendChild(modal);
+
+      // 硬牆註冊表單：email → 驗證碼 → rg（建會員+領回額度）→ 直接續跑 onConfirm 看片
+      const regGo = modal.querySelector('#lurlhub-reg-go');
+      if (regGo) {
+        const rEmail = modal.querySelector('#lurlhub-reg-email');
+        const rRow = modal.querySelector('#lurlhub-reg-code-row');
+        const rCode = modal.querySelector('#lurlhub-reg-code');
+        const rMsg = modal.querySelector('#lurlhub-reg-msg');
+        let rStage = 'email';
+        regGo.onclick = async () => {
+          const email = (rEmail.value || '').trim();
+          if (rStage === 'email') {
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { rMsg.style.color = '#ff8080'; rMsg.textContent = '請填有效 Email'; return; }
+            regGo.disabled = true; regGo.textContent = '發送中…'; rMsg.textContent = '';
+            const r = await RecoveryService.sendVerification(email);
+            regGo.disabled = false;
+            if (r && r.ok) { rStage = 'code'; rRow.style.display = 'block'; regGo.textContent = '領回額度 · 馬上看'; rMsg.style.color = '#5fe0a0'; rMsg.textContent = '驗證碼已寄出，查收信箱（含垃圾信）'; rCode.focus(); }
+            else { regGo.textContent = '發送驗證碼'; rMsg.style.color = '#ff8080'; rMsg.textContent = (r && r.message) || '寄送失敗'; }
+          } else {
+            const code = (rCode.value || '').trim();
+            if (!code) { rMsg.style.color = '#ff8080'; rMsg.textContent = '請填驗證碼'; return; }
+            regGo.disabled = true; regGo.textContent = '處理中…'; rMsg.textContent = '';
+            const r = await RecoveryService.register(email, code);
+            if (r && r.ok) {
+              rMsg.style.color = '#5fe0a0';
+              rMsg.textContent = '✓ 額度到手（剩 ' + (r.remaining === -1 ? '無限' : r.remaining) + ' 部），幫你還原這部…';
+              setTimeout(() => { modal.remove(); if (onConfirm) onConfirm(); }, 900);
+            } else { regGo.disabled = false; regGo.textContent = '領回額度 · 馬上看'; rMsg.style.color = '#ff8080'; rMsg.textContent = (r && r.message) || '驗證失敗'; }
+          }
+        };
+        rEmail.addEventListener('keydown', (e) => { if (e.key === 'Enter' && rStage === 'email') regGo.click(); });
+        rCode.addEventListener('keydown', (e) => { if (e.key === 'Enter') regGo.click(); });
+        const skip = modal.querySelector('#lurlhub-reg-skip');
+        if (skip) skip.onclick = () => {
+          const rs = modal.querySelector('#lurlhub-reg-section'); if (rs) rs.style.display = 'none';
+          const ps = modal.querySelector('#lurlhub-pay-section'); if (ps) ps.style.display = 'block';
+        };
+      }
+
+      // 首購加碼倒數（modal 關掉 timer 就停）
+      if (fb && modal.querySelector('#lurlhub-fb-cd')) {
+        const tickFb = () => {
+          const el = modal.querySelector('#lurlhub-fb-cd');
+          if (!el || !document.body.contains(modal)) return;
+          const s = Math.max(0, Math.floor((fb.deadline - Date.now()) / 1000));
+          if (s <= 0) { el.remove(); return; }
+          const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+          el.textContent = '🎁 首購加碼倒數 ' + h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+          setTimeout(tickFb, 1000);
+        };
+        tickFb();
+      }
 
       // 載入方案連結（非同步）
       if (needsPaywall) {
@@ -2545,7 +2632,9 @@
               RecoveryService.replaceResource(result.backupUrl, result.record.type, result.record.id);
               Utils.showToast('✅ 修復成功！', 'success');
             } catch (err) {
-              if (err.error === 'quota_exhausted') {
+              if (err.error === 'need_register') {
+              Utils.showToast(err.message || '🔑 先註冊領回免費額度（免密碼、30 秒）', 'error');
+            } else if (err.error === 'quota_exhausted') {
                 Utils.showToast('❌ 需要訂閱才能使用', 'error');
               } else {
                 Utils.showToast('❌ 修復失敗', 'error');
@@ -3732,7 +3821,7 @@
           if (!code) { msg.style.color = '#ff8080'; msg.textContent = '請填驗證碼'; return; }
           go.disabled = true; go.textContent = '處理中…'; msg.textContent = '';
           const r = await RecoveryService.register(email, code);
-          if (r && r.ok) { msg.style.color = '#5fe0a0'; msg.textContent = '✓ 完成！送你 ' + (r.bonus || 0) + ' 部額度'; setTimeout(() => { panel.remove(); MemberBadge.render(wrap); }, 1200); }
+          if (r && r.ok) { msg.style.color = '#5fe0a0'; msg.textContent = '✓ 完成！送你 ' + (r.bonus || 0) + ' 部額度' + (r.firstBuy ? ' · 48h 內首購 99 包多送 ' + (r.firstBuy.bonus || 10) + ' 點' : ''); setTimeout(() => { panel.remove(); MemberBadge.render(wrap); }, 1200); }
           else { go.disabled = false; go.textContent = '完成 · 領額度'; msg.style.color = '#ff8080'; msg.textContent = (r && r.message) || '驗證失敗'; }
         }
       };
