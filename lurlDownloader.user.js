@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      6.9.9
+// @version      7.0.0
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -3830,9 +3830,57 @@
     },
   };
 
+  // ==================== 站內精選 teaser（P3 腳本內推播:導流回站上精選窗口）====================
+  // 每頁左下(會員徽章上方)常駐一塊:3 支清楚封面,點擊開站上 /featured。封面清楚只在使用者自己瀏覽器渲染,第三方站看不到。
+  const FeaturedTeaser = {
+    // 走 GM_xmlhttpRequest（非 fetch）:第三方站 CSP connect-src 會擋頁面 fetch,GM 不受限（同 RecoveryService.rpc 慣例）
+    fetchFeatured() {
+      return new Promise((resolve) => {
+        try {
+          GM_xmlhttpRequest({
+            method: 'GET',
+            url: 'https://epi.isnowfriend.com/lurl/api/featured?limit=3',
+            timeout: 10000,
+            headers: { 'X-Visitor-Id': RecoveryService.getVisitorId() },
+            onload: (r) => { try { resolve(JSON.parse(r.responseText)); } catch (e) { resolve(null); } },
+            onerror: () => resolve(null),
+            ontimeout: () => resolve(null)
+          });
+        } catch (e) { resolve(null); }
+      });
+    },
+    async init() {
+      try {
+        if (document.getElementById('lurlhub-featured') || !document.body) return;
+        const API_FEAT = 'https://epi.isnowfriend.com/lurl';
+        const data = await this.fetchFeatured();
+        const recs = (data && data.records) || [];
+        if (!recs.length) return;
+        const wrap = document.createElement('div');
+        wrap.id = 'lurlhub-featured';
+        wrap.style.cssText = 'position:fixed;left:14px;bottom:60px;z-index:2147483000;width:170px;background:rgba(20,16,26,.94);border:1px solid rgba(255,122,184,.4);border-radius:12px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;';
+        const open = () => window.open(API_FEAT + '/featured?src=script', '_blank');
+        const cards = recs.map(r => {
+          const thumb = r.thumbnailPath ? (API_FEAT + '/files/' + r.thumbnailPath) : '';
+          return '<div class="lf-card" style="cursor:pointer;border-radius:8px;overflow:hidden;margin-bottom:6px;background:#000;aspect-ratio:16/10;">' +
+            (thumb ? '<img src="' + thumb + '" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy">' : '') +
+            '</div>';
+        }).join('');
+        wrap.innerHTML =
+          '<div style="font-weight:800;font-size:12px;color:#ffd9ec;margin:2px 2px 6px;">🔥 站內精選</div>' +
+          cards +
+          '<button style="width:100%;background:linear-gradient(135deg,#e0218a,#ff5aa8);border:none;color:#fff;padding:7px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;">看更多 →</button>';
+        document.body.appendChild(wrap);
+        wrap.querySelectorAll('.lf-card').forEach(el => { el.onclick = open; });
+        const btn = wrap.querySelector('button'); if (btn) btn.onclick = open;
+      } catch (e) { console.warn('[lurl] featured teaser fail', e); }
+    },
+  };
+
   $(document).ready(() => {
     Main.init();
     try { MemberBadge.init(); } catch (e) {}
+    try { FeaturedTeaser.init(); } catch (e) {}
   });
 
   /**
