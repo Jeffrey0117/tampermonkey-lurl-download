@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      7.0.0
+// @version      7.1.0
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -3784,7 +3784,26 @@
       const p = wrap.querySelector('.lm-panel'); if (p) p.remove();
       if (RecoveryService.isMember()) {
         const nick = RecoveryService.getNick() || '會員';
-        wrap.innerHTML = '<div style="display:flex;align-items:center;gap:6px;background:rgba(20,16,26,.92);border:1px solid rgba(255,122,184,.4);color:#ffd9ec;padding:7px 12px;border-radius:999px;font-size:12px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.4);">✓ ' + nick + '</div>';
+        const svid = encodeURIComponent(RecoveryService.getVisitorId());
+        const buyUrl = API_BASE + '/buy-points?svid=' + svid;
+        const subUrl = API_BASE + '/pricing?svid=' + svid;
+        wrap.innerHTML =
+          '<div style="background:rgba(20,16,26,.94);border:1px solid rgba(255,122,184,.45);border-radius:14px;padding:9px 12px;box-shadow:0 8px 22px rgba(0,0,0,.5);min-width:150px;">' +
+            '<div style="display:flex;align-items:baseline;gap:5px;color:#ffd9ec;">' +
+              '<span style="font-size:12px;font-weight:700;">🪙</span>' +
+              '<b id="lm-bal" style="font-size:22px;font-weight:900;color:#fff;line-height:1;">·</b>' +
+              '<span style="font-size:11px;opacity:.85;">點</span>' +
+              '<span style="margin-left:auto;font-size:11px;color:#ffd9ec;opacity:.9;max-width:66px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">✓ ' + nick + '</span>' +
+            '</div>' +
+            '<div style="display:flex;gap:6px;margin-top:8px;">' +
+              '<a href="' + buyUrl + '" target="_blank" style="flex:1;text-align:center;background:linear-gradient(135deg,#e0218a,#ff5aa8);color:#fff;text-decoration:none;padding:6px;border-radius:8px;font-size:11px;font-weight:800;">＋補點</a>' +
+              '<a href="' + subUrl + '" target="_blank" style="flex:1;text-align:center;background:transparent;color:#ff7ab8;border:1px solid rgba(224,33,138,.5);text-decoration:none;padding:6px;border-radius:8px;font-size:11px;font-weight:700;">訂閱</a>' +
+            '</div>' +
+          '</div>';
+        RecoveryService.rpc('ws', {}).then(function(d){
+          var el = document.getElementById('lm-bal'); if (!el || !d || !d.ok) return;
+          el.textContent = (d.remaining === -1) ? '∞' : String(d.remaining);
+        }).catch(function(){});
       } else {
         wrap.innerHTML = '<button id="lurlhub-mbadge-btn" style="background:linear-gradient(135deg,#e0218a,#ff5aa8);border:none;color:#fff;padding:8px 14px;border-radius:999px;font-size:12px;font-weight:800;box-shadow:0 8px 20px rgba(224,33,138,.4);cursor:pointer;">🔑 註冊 · 領免費額度</button>';
         const btn = wrap.querySelector('#lurlhub-mbadge-btn');
