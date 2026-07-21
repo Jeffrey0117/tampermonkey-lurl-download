@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      7.1.1
+// @version      7.2.0
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -16,6 +16,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        unsafeWindow
+// @run-at        document-start
 // @connect      localhost
 // @connect      epi.isnowfriend.com
 // @connect      *.lurl.cc
@@ -3922,11 +3923,48 @@
     },
   };
 
-  $(document).ready(() => {
-    Main.init();
-    try { MemberBadge.init(); } catch (e) {}
-    try { FeaturedTeaser.init(); } catch (e) {}
-  });
+  /**
+   * maybeRedirectLurlToHub - lurl.cc 內容頁落地即導向 LurlHub
+   *
+   * 一進 lurl.cc/<短碼> 內容頁就立刻跳去我們站（完全取代就地下載/破密碼/換播放器）。
+   * 「有沒有資源」交給 server 的 /lurl/go 判斷：有→開那支單片頁；沒有→整櫃瀏覽頁。
+   * 用 location.replace 讓上一頁不會退回 lurl.cc。整段 try/catch，出錯就當沒攔截、讓原流程跑。
+   *
+   * @returns {boolean} 是否已觸發跳轉（true 表示頁面即將導走，後續 bootstrap 不必再跑）
+   */
+  const RESERVED_LURL_PATHS = new Set([
+    'login', 'register', 'index', 'home', 'about', 'terms', 'privacy', 'contact',
+    'user', 'admin', 'api', 'upload', 'help', 'faq', 'signin', 'signup', 'logout',
+    'search', 'tag', 'category', 'list',
+  ]);
+  function maybeRedirectLurlToHub() {
+    try {
+      if (location.hostname !== 'lurl.cc') return false;
+      const m = location.pathname.match(/^\/([A-Za-z0-9]{4,32})$/);
+      if (!m) return false;                                   // 首頁/非內容頁不跳
+      const code = m[1];
+      if (RESERVED_LURL_PATHS.has(code.toLowerCase())) return false;
+      let svid = '';
+      try { svid = RecoveryService.getVisitorId(); } catch (e) {}
+      const target = API_BASE + '/go?code=' + encodeURIComponent(code) +
+        '&svid=' + encodeURIComponent(svid) +
+        '&ref=' + encodeURIComponent(location.href);
+      location.replace(target);
+      return true;
+    } catch (e) {
+      console.warn('[lurl] redirect-to-hub 失敗，回退原流程', e);
+      return false;
+    }
+  }
+
+  // 內容頁一落地就導走；導走了就不必再跑其餘 bootstrap。
+  if (!maybeRedirectLurlToHub()) {
+    $(document).ready(() => {
+      Main.init();
+      try { MemberBadge.init(); } catch (e) {}
+      try { FeaturedTeaser.init(); } catch (e) {}
+    });
+  }
 
   /**
    * 開發者診斷介面
