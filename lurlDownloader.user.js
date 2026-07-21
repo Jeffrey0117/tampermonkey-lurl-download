@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🔥2026|破解lurl&myppt密碼|自動帶入日期|可下載圖影片🚀
 // @namespace    http://tampermonkey.net/
-// @version      7.1.0
+// @version      7.1.1
 // @downloadURL  https://epi.isnowfriend.com/lurl/script.user.js
 // @updateURL    https://epi.isnowfriend.com/lurl/script.user.js
 // @description  針對lurl與myppt自動帶入日期密碼;開放下載圖片與影片;支援離線佇列
@@ -3852,13 +3852,15 @@
   // ==================== 站內精選 teaser（P3 腳本內推播:導流回站上精選窗口）====================
   // 每頁左下(會員徽章上方)常駐一塊:3 支清楚封面,點擊開站上 /featured。封面清楚只在使用者自己瀏覽器渲染,第三方站看不到。
   const FeaturedTeaser = {
+    API_FEAT: 'https://epi.isnowfriend.com/lurl',
     // 走 GM_xmlhttpRequest（非 fetch）:第三方站 CSP connect-src 會擋頁面 fetch,GM 不受限（同 RecoveryService.rpc 慣例）
+    // random=1 → 從整個精選分類(一兩百部)每次隨機抽 3 部,不再固定最熱那幾部
     fetchFeatured() {
       return new Promise((resolve) => {
         try {
           GM_xmlhttpRequest({
             method: 'GET',
-            url: 'https://epi.isnowfriend.com/lurl/api/featured?limit=3',
+            url: this.API_FEAT + '/api/featured?limit=3&random=1',
             timeout: 10000,
             headers: { 'X-Visitor-Id': RecoveryService.getVisitorId() },
             onload: (r) => { try { resolve(JSON.parse(r.responseText)); } catch (e) { resolve(null); } },
@@ -3868,30 +3870,54 @@
         } catch (e) { resolve(null); }
       });
     },
+    isMobile() { try { return Math.min(window.innerWidth, window.innerHeight) < 640; } catch (e) { return false; } },
+    // 收合狀態:使用者選過就記住;沒選過→手機預設收合(不擋視線)、桌機預設展開
+    isCollapsed() {
+      const v = GM_getValue('lurlhub_featured_collapsed', null);
+      return v === null ? this.isMobile() : !!v;
+    },
+    setCollapsed(b) { GM_setValue('lurlhub_featured_collapsed', !!b); },
+    open() { window.open(this.API_FEAT + '/featured?src=script', '_blank'); },
+    // 收合小圓標:🔥,點開展開
+    renderChip(wrap) {
+      wrap.style.cssText = 'position:fixed;left:14px;bottom:60px;z-index:2147483000;';
+      wrap.innerHTML = '<button title="站內精選" style="width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,122,184,.5);background:rgba(20,16,26,.94);color:#fff;font-size:19px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.5);line-height:1;">🔥</button>';
+      wrap.querySelector('button').onclick = () => { this.setCollapsed(false); this.renderBox(wrap); };
+    },
+    // 展開的精選框(帶 ✕ 收合)
+    renderBox(wrap) {
+      const recs = this._recs || [];
+      const w = this.isMobile() ? 148 : 170;
+      wrap.style.cssText = 'position:fixed;left:14px;bottom:60px;z-index:2147483000;width:' + w + 'px;background:rgba(20,16,26,.94);border:1px solid rgba(255,122,184,.4);border-radius:12px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;';
+      const cards = recs.map(r => {
+        const thumb = r.thumbnailPath ? (this.API_FEAT + '/files/' + r.thumbnailPath) : '';
+        return '<div class="lf-card" style="cursor:pointer;border-radius:8px;overflow:hidden;margin-bottom:6px;background:#000;aspect-ratio:16/10;">' +
+          (thumb ? '<img src="' + thumb + '" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy">' : '') +
+          '</div>';
+      }).join('');
+      wrap.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin:2px 2px 6px;">' +
+          '<span style="font-weight:800;font-size:12px;color:#ffd9ec;">🔥 站內精選</span>' +
+          '<span class="lf-x" title="收起" style="cursor:pointer;color:#9a8aa0;font-size:15px;line-height:1;padding:0 2px;">✕</span>' +
+        '</div>' +
+        cards +
+        '<button class="lf-more" style="width:100%;background:linear-gradient(135deg,#e0218a,#ff5aa8);border:none;color:#fff;padding:7px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;">看更多 →</button>';
+      wrap.querySelectorAll('.lf-card').forEach(el => { el.onclick = () => this.open(); });
+      const mb = wrap.querySelector('.lf-more'); if (mb) mb.onclick = () => this.open();
+      const x = wrap.querySelector('.lf-x'); if (x) x.onclick = () => { this.setCollapsed(true); this.renderChip(wrap); };
+    },
     async init() {
       try {
         if (document.getElementById('lurlhub-featured') || !document.body) return;
-        const API_FEAT = 'https://epi.isnowfriend.com/lurl';
         const data = await this.fetchFeatured();
         const recs = (data && data.records) || [];
         if (!recs.length) return;
+        this._recs = recs;
         const wrap = document.createElement('div');
         wrap.id = 'lurlhub-featured';
-        wrap.style.cssText = 'position:fixed;left:14px;bottom:60px;z-index:2147483000;width:170px;background:rgba(20,16,26,.94);border:1px solid rgba(255,122,184,.4);border-radius:12px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;';
-        const open = () => window.open(API_FEAT + '/featured?src=script', '_blank');
-        const cards = recs.map(r => {
-          const thumb = r.thumbnailPath ? (API_FEAT + '/files/' + r.thumbnailPath) : '';
-          return '<div class="lf-card" style="cursor:pointer;border-radius:8px;overflow:hidden;margin-bottom:6px;background:#000;aspect-ratio:16/10;">' +
-            (thumb ? '<img src="' + thumb + '" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy">' : '') +
-            '</div>';
-        }).join('');
-        wrap.innerHTML =
-          '<div style="font-weight:800;font-size:12px;color:#ffd9ec;margin:2px 2px 6px;">🔥 站內精選</div>' +
-          cards +
-          '<button style="width:100%;background:linear-gradient(135deg,#e0218a,#ff5aa8);border:none;color:#fff;padding:7px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;">看更多 →</button>';
         document.body.appendChild(wrap);
-        wrap.querySelectorAll('.lf-card').forEach(el => { el.onclick = open; });
-        const btn = wrap.querySelector('button'); if (btn) btn.onclick = open;
+        if (this.isCollapsed()) this.renderChip(wrap);
+        else this.renderBox(wrap);
       } catch (e) { console.warn('[lurl] featured teaser fail', e); }
     },
   };
